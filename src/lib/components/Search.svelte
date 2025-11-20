@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	// Import all JSON data files
 	import appAnalyzer from '$lib/data/AppAnalyzer.json';
 	import automationAnalyzer from '$lib/data/AutomationAnalyzer.json';
@@ -7,11 +7,30 @@
 	import QDimMeasureResult from './QDimMeasureResult.svelte';
 
 	let searchQuery = $state('');
-	let searchResults = $state([]);
+	let searchResults = $state([] as Array<{
+		path: string;
+		object: any;
+		objectType: string | null;
+		context: any;
+		file?: string;
+		app?: string;
+		sheet?: string | null;
+		sheetName?: string | null;
+	}>);
+	let unfilteredResults = $state([] as Array<{
+		path: string;
+		object: any;
+		objectType: string | null;
+		context: any;
+		file?: string;
+		app?: string;
+		sheet?: string | null;
+		sheetName?: string | null;
+	}>);
 	let isSearching = $state(false);
 	
 	// Helper to create a new Set for reactivity
-	function createNewSet(oldSet) {
+	function createNewSet(oldSet: Set<string>) {
 		return new Set(oldSet);
 	}
 
@@ -52,12 +71,31 @@
 
 	const { apps, sheets } = extractAppsAndSheets();
 
+	// Create a map of sheetId to sheet name for quick lookup
+	const sheetIdToNameMap = new Map<string, string>();
+	sheets.forEach((sheet) => {
+		if (sheet.sheetId) {
+			sheetIdToNameMap.set(sheet.sheetId, sheet.name);
+		}
+	});
+
 	// Get unique sheet names
 	const uniqueSheets = Array.from(new Set(sheets.map((s) => s.name))).sort();
 
-	// Initialize with all apps and sheets selected
-	let selectedApps = $state(new Set(apps.map((a) => a.name)));
-	let selectedSheets = $state(new Set(uniqueSheets));
+	// Initialize with nothing selected
+	let selectedApps = $state(new Set<string>());
+	let selectedSheets = $state(new Set<string>());
+	
+	// Get available sheets based on selected apps
+	const availableSheets = $derived(
+		Array.from(
+			new Set(
+				sheets
+					.filter((sheet) => selectedApps.has(sheet.app))
+					.map((sheet) => sheet.name)
+			)
+		).sort()
+	);
 	
 	// Type filter options
 	const typeOptions = [
@@ -66,12 +104,22 @@
 		'Sheet Measure',
 		'Sheet Dimension'
 	];
-	let selectedTypes = $state(new Set(typeOptions));
+	let selectedTypes = $state(new Set<string>());
 	
 	// Collapse/expand state for filter categories
 	let appsExpanded = $state(true);
 	let sheetsExpanded = $state(true);
 	let typesExpanded = $state(true);
+	
+	// Get available types from unfiltered results (filtered by app/sheet but not by type)
+	const availableTypes = $derived(
+		Array.from(new Set(unfilteredResults.map((r) => r.objectType).filter((t): t is string => Boolean(t)))).sort()
+	);
+	
+	// Show type filters only if apps or sheets are selected and there are results
+	const showTypeFilters = $derived(
+		(selectedApps.size > 0 || selectedSheets.size > 0) && availableTypes.length > 0
+	);
 
 	// Deep search function that searches through nested objects
 	function deepSearch(obj, query, path = '', context = {}) {
@@ -88,12 +136,41 @@
 			// Track if we're inside masterDimensions or masterMeasures arrays
 			let inMasterDimensions = currentContext.inMasterDimensions || false;
 			let inMasterMeasures = currentContext.inMasterMeasures || false;
+			let inSheetDimensions = currentContext.inSheetDimensions || false;
+			let inSheetMeasures = currentContext.inSheetMeasures || false;
 			
 			if (currentPath === 'masterDimensions' || currentPath.includes('masterDimensions[')) {
 				inMasterDimensions = true;
 			}
 			if (currentPath === 'masterMeasures' || currentPath.includes('masterMeasures[')) {
 				inMasterMeasures = true;
+			}
+			if (currentPath === 'sheetDimensions' || currentPath.includes('sheetDimensions[')) {
+				inSheetDimensions = true;
+			}
+			if (currentPath === 'sheetMeasures' || currentPath.includes('sheetMeasures[')) {
+				inSheetMeasures = true;
+			}
+
+			// Track if we're inside a qDim or qMeasure object
+			let inQdim = currentContext.inQdim || false;
+			let inQmeasure = currentContext.inQmeasure || false;
+			
+			if (currentPath.endsWith('.qDim') || currentPath.includes('.qDim.')) {
+				inQdim = true;
+			}
+			if (currentPath.endsWith('.qMeasure') || currentPath.includes('.qMeasure.')) {
+				inQmeasure = true;
+			}
+			
+			// Also check if we're in qDef within sheetDimensions or sheetMeasures
+			if (currentPath.endsWith('.qDef') || currentPath.includes('.qDef.')) {
+				if (inSheetDimensions || currentPath.includes('sheetDimensions[')) {
+					inQdim = true;
+				}
+				if (inSheetMeasures || currentPath.includes('sheetMeasures[')) {
+					inQmeasure = true;
+				}
 			}
 
 			// Check if we're entering a qDim or qMeasure object
@@ -110,16 +187,21 @@
 				isQmeasureObject = true;
 				qmeasurePath = currentPath;
 			}
-
-			// Track if we're inside a qDim or qMeasure object
-			let inQdim = currentContext.inQdim || false;
-			let inQmeasure = currentContext.inQmeasure || false;
 			
-			if (currentPath.endsWith('.qDim') || currentPath.includes('.qDim.')) {
-				inQdim = true;
-			}
-			if (currentPath.endsWith('.qMeasure') || currentPath.includes('.qMeasure.')) {
-				inQmeasure = true;
+			// Check if we're entering a qDef object within sheetDimensions or sheetMeasures
+			// Check both the current path and the context to determine if we're in sheetDimensions/sheetMeasures
+			const isInSheetDimensionsPath = currentPath.includes('sheetDimensions[') || currentContext.inSheetDimensions;
+			const isInSheetMeasuresPath = currentPath.includes('sheetMeasures[') || currentContext.inSheetMeasures;
+			
+			if (currentPath.endsWith('.qDef') && typeof current === 'object') {
+				if (isInSheetDimensionsPath) {
+					isQdimObject = true;
+					qdimPath = currentPath;
+				}
+				if (isInSheetMeasuresPath) {
+					isQmeasureObject = true;
+					qmeasurePath = currentPath;
+				}
 			}
 
 			// Determine the type based on context
@@ -130,6 +212,21 @@
 				objectType = inMasterMeasures ? 'Master Measure' : 'Sheet Measure';
 			}
 
+			// Extract sheetId from parent object if we're in sheetDimensions or sheetMeasures
+			let sheetId = currentContext.sheetId;
+			let sheetName = currentContext.sheetName;
+			
+			// If we're inside a sheetDimensions or sheetMeasures item, try to get sheetId from parent
+			if ((inSheetDimensions || inSheetMeasures) && parentObject && typeof parentObject === 'object') {
+				if (parentObject.sheetId) {
+					sheetId = parentObject.sheetId;
+					// Look up sheet name from sheetId using the global map
+					if (sheetIdToNameMap.has(sheetId)) {
+						sheetName = sheetIdToNameMap.get(sheetId);
+					}
+				}
+			}
+
 			// Always preserve sheet context from parent
 			const newContext = { 
 				...currentContext, 
@@ -137,10 +234,12 @@
 				inQmeasure,
 				inMasterDimensions,
 				inMasterMeasures,
+				inSheetDimensions: inSheetDimensions || currentContext.inSheetDimensions || false,
+				inSheetMeasures: inSheetMeasures || currentContext.inSheetMeasures || false,
 				objectType: objectType || currentContext.objectType || null,
-				// Preserve sheetName and sheetId from parent context
-				sheetName: currentContext.sheetName,
-				sheetId: currentContext.sheetId
+				// Preserve or update sheetName and sheetId
+				sheetName: sheetName || currentContext.sheetName,
+				sheetId: sheetId || currentContext.sheetId
 			};
 
 			// If we found a qDim or qMeasure object, check if it matches
@@ -200,6 +299,19 @@
 							sheetName: item.qProperty.qMetaDef.title,
 							sheetId: item.qProperty.qInfo?.qId
 						};
+					} else if ((currentPath === 'sheetDimensions' || currentPath === 'sheetMeasures') && item?.sheetId) {
+						// When entering sheetDimensions or sheetMeasures items, extract sheetId
+						let itemSheetName = null;
+						if (item.sheetId && sheetIdToNameMap.has(item.sheetId)) {
+							itemSheetName = sheetIdToNameMap.get(item.sheetId);
+						}
+						sheetContext = {
+							...currentContext,
+							sheetName: itemSheetName,
+							sheetId: item.sheetId,
+							inSheetDimensions: currentPath === 'sheetDimensions',
+							inSheetMeasures: currentPath === 'sheetMeasures'
+						};
 					} else {
 						// Always preserve sheet context when traversing arrays within sheets
 						sheetContext = {
@@ -213,10 +325,15 @@
 					}
 				});
 			} else if (typeof current === 'object') {
-				// newContext already preserves sheetName from currentContext via spread operator
+				// Ensure we preserve inSheetDimensions and inSheetMeasures when traversing objects
+				const contextForObject = {
+					...newContext,
+					inSheetDimensions: newContext.inSheetDimensions || currentContext.inSheetDimensions || false,
+					inSheetMeasures: newContext.inSheetMeasures || currentContext.inSheetMeasures || false
+				};
 				Object.keys(current).forEach((key) => {
 					const newPath = currentPath ? `${currentPath}.${key}` : key;
-					if (searchRecursive(current[key], newPath, newContext, current, currentPath)) {
+					if (searchRecursive(current[key], newPath, contextForObject, current, currentPath)) {
 						foundMatch = true;
 					}
 				});
@@ -280,15 +397,16 @@
 	function performSearch() {
 		isSearching = true;
 		const allResults = [];
+		unfilteredResults = []; // Reset unfiltered results
 		const query = searchQuery.trim();
 		const hasQuery = query.length > 0;
 		
 		// Check if all items are selected (treat as no filter)
-		const allAppsSelected = selectedApps.size === apps.length;
-		const allSheetsSelected = selectedSheets.size === uniqueSheets.length;
+		const allAppsSelected = selectedApps.size === apps.length && apps.length > 0;
+		const allSheetsSelected = selectedSheets.size === availableSheets.length && availableSheets.length > 0;
 		const allTypesSelected = selectedTypes.size === typeOptions.length;
 		
-		// Check if any filters are actually selected (not all, but some)
+		// Check if any filters are actually selected
 		const hasAppSelections = selectedApps.size > 0;
 		const hasSheetSelections = selectedSheets.size > 0;
 		const hasTypeSelections = selectedTypes.size > 0;
@@ -298,12 +416,11 @@
 		const hasAppFilters = hasAppSelections && !allAppsSelected;
 		const hasSheetFilters = hasSheetSelections && !allSheetsSelected;
 		const hasTypeFilters = hasTypeSelections && !allTypesSelected;
-		const hasAnyFilters = hasAppFilters || hasSheetFilters || hasTypeFilters;
 
-		// If no search query and no filters selected (0 selected), show no results
-		// But if all are selected, we want to show all results
+		// If no search query and no filters selected, show no results
 		if (!hasQuery && !hasAnySelections) {
 			searchResults = [];
+			unfilteredResults = [];
 			isSearching = false;
 			return;
 		}
@@ -312,8 +429,8 @@
 		Object.entries(dataFiles).forEach(([fileName, data]) => {
 			const appName = getAppName(fileName);
 
-			// Filter by app - only if not all apps are selected
-			if (hasAppFilters && !selectedApps.has(appName)) {
+			// Filter by app - only if apps are selected
+			if (hasAppSelections && !selectedApps.has(appName)) {
 				return;
 			}
 
@@ -322,7 +439,7 @@
 				fileName
 			});
 
-			fileResults.forEach((result) => {
+			for (const result of fileResults) {
 				// Try to get sheet name from context first, then from path
 				let sheetName = result.context?.sheetName;
 				if (!sheetName) {
@@ -334,46 +451,86 @@
 				const isMasterObject = result.context?.inMasterDimensions || result.context?.inMasterMeasures;
 				const isSheetObject = result.context?.objectType === 'Sheet Measure' || result.context?.objectType === 'Sheet Dimension';
 
-				// Filter by type - only if not all types are selected
-				if (hasTypeFilters && result.objectType) {
-					if (!selectedTypes.has(result.objectType)) {
-						return;
-					}
-				}
-
-				// Filter by sheet - only if not all sheets are selected
-				// Master objects don't have sheets, so skip sheet filtering for them
-				// Sheet objects must have a sheet name and it must be in the selected sheets
-				if (hasSheetFilters) {
-					// Only filter sheet objects (not master objects)
-					if (isSheetObject) {
-						// If it's a sheet object but has no sheet name, exclude it
-						if (!sheetName) {
-							return;
-						}
-						// If the sheet name is not in selected sheets, exclude it
-						if (!selectedSheets.has(sheetName)) {
-							return;
-						}
-					}
-				}
-
-				allResults.push({
+				// Create the result object
+				const resultObj = {
 					...result,
 					file: fileName,
 					app: appName,
 					sheet: sheetName
-				});
-			});
+				};
+
+				// Check if it passes app/sheet filters (before type filtering)
+				// This is used to populate unfilteredResults for availableTypes calculation
+				const passesAppFilter = !hasAppSelections || selectedApps.has(appName);
+				const passesSheetFilter = !hasSheetSelections || !isSheetObject || (sheetName && selectedSheets.has(sheetName));
+				
+				// Add to unfilteredResults if it passes app/sheet filters (used for availableTypes)
+				if (passesAppFilter && passesSheetFilter) {
+					unfilteredResults.push(resultObj);
+				}
+
+				// Filter by type - only if types are selected
+				if (hasTypeSelections && result.objectType) {
+					if (!selectedTypes.has(result.objectType)) {
+						continue;
+					}
+				}
+
+				// Filter by sheet - only if sheets are selected
+				// Master objects don't have sheets, so skip sheet filtering for them
+				// Sheet objects must have a sheet name and it must be in the selected sheets
+				if (hasSheetSelections) {
+					// Only filter sheet objects (not master objects)
+					if (isSheetObject) {
+						// If it's a sheet object but has no sheet name, exclude it
+						if (!sheetName) {
+							continue;
+						}
+						// If the sheet name is not in selected sheets, exclude it
+						if (!selectedSheets.has(sheetName)) {
+							continue;
+						}
+					}
+				}
+
+				allResults.push(resultObj);
+			}
 		});
 
 		searchResults = allResults;
 		isSearching = false;
 	}
 
-	// Perform initial search to show all results on mount
+	// Debounce search effect to prevent blocking
+	let searchEffectTimeout;
+	
+	// Initialize with empty results - search will run when query or filters change
 	$effect(() => {
-		performSearch();
+		// Clear any pending search
+		if (searchEffectTimeout) {
+			clearTimeout(searchEffectTimeout);
+		}
+		
+		// Only perform search if there's a query or filters are selected
+		const hasQuery = searchQuery.trim().length > 0;
+		const hasSelections = selectedApps.size > 0 || selectedSheets.size > 0 || selectedTypes.size > 0;
+		
+		if (hasQuery || hasSelections) {
+			// Debounce the search to avoid blocking UI
+			searchEffectTimeout = setTimeout(() => {
+				performSearch();
+			}, 100);
+		} else {
+			searchResults = [];
+			unfilteredResults = [];
+		}
+		
+		// Cleanup function
+		return () => {
+			if (searchEffectTimeout) {
+				clearTimeout(searchEffectTimeout);
+			}
+		};
 	});
 
 	// Debounce search for better performance
@@ -387,8 +544,17 @@
 
 	function toggleApp(appName) {
 		const newSet = createNewSet(selectedApps);
-		if (newSet.has(appName)) {
+		const wasSelected = newSet.has(appName);
+		
+		if (wasSelected) {
 			newSet.delete(appName);
+			// Remove sheets from this app when app is deselected
+			const sheetsToRemove = sheets
+				.filter((sheet) => sheet.app === appName)
+				.map((sheet) => sheet.name);
+			const newSheetsSet = createNewSet(selectedSheets);
+			sheetsToRemove.forEach((sheetName) => newSheetsSet.delete(sheetName));
+			selectedSheets = newSheetsSet;
 		} else {
 			newSet.add(appName);
 		}
@@ -418,7 +584,7 @@
 	}
 
 	function selectAllSheets() {
-		selectedSheets = new Set(uniqueSheets);
+		selectedSheets = new Set(availableSheets);
 		performSearch();
 	}
 
@@ -439,7 +605,7 @@
 	}
 
 	function selectAllTypes() {
-		selectedTypes = new Set(typeOptions);
+		selectedTypes = new Set<string>(availableTypes);
 		performSearch();
 	}
 
@@ -536,7 +702,7 @@
 								d="M9 5l7 7-7 7"
 							/>
 						</svg>
-						<span>Sheets ({selectedSheets.size}/{uniqueSheets.length})</span>
+						<span>Sheets ({selectedSheets.size}/{availableSheets.length})</span>
 					</button>
 					<div class="flex gap-1">
 						<button
@@ -558,7 +724,7 @@
 				</div>
 				{#if sheetsExpanded}
 					<div class="space-y-2">
-						{#each uniqueSheets as sheetName}
+						{#each availableSheets as sheetName}
 							<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 								<input
 									type="checkbox"
@@ -574,62 +740,64 @@
 			</div>
 
 			<!-- Type Filters -->
-			<div>
-				<div class="flex items-center justify-between mb-3">
-					<button
-						type="button"
-						onclick={() => (typesExpanded = !typesExpanded)}
-						class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-					>
-						<svg
-							class="w-4 h-4 transition-transform {typesExpanded ? 'rotate-90' : ''}"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M9 5l7 7-7 7"
-							/>
-						</svg>
-						<span>Type ({selectedTypes.size}/{typeOptions.length})</span>
-					</button>
-					<div class="flex gap-1">
+			{#if showTypeFilters}
+				<div>
+					<div class="flex items-center justify-between mb-3">
 						<button
 							type="button"
-							onclick={selectAllTypes}
-							class="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+							onclick={() => (typesExpanded = !typesExpanded)}
+							class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
 						>
-							All
-						</button>
-						<span class="text-xs text-gray-400">|</span>
-						<button
-							type="button"
-							onclick={deselectAllTypes}
-							class="text-xs text-purple-600 dark:text-purple-400 hover:underline"
-						>
-							None
-						</button>
-					</div>
-				</div>
-				{#if typesExpanded}
-					<div class="space-y-2">
-						{#each typeOptions as typeName}
-							<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
-								<input
-									type="checkbox"
-									checked={selectedTypes.has(typeName)}
-									onchange={() => toggleType(typeName)}
-									class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+							<svg
+								class="w-4 h-4 transition-transform {typesExpanded ? 'rotate-90' : ''}"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M9 5l7 7-7 7"
 								/>
-								<span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{typeName}</span>
-							</label>
-						{/each}
+							</svg>
+							<span>Types ({selectedTypes.size}/{availableTypes.length})</span>
+						</button>
+						<div class="flex gap-1">
+							<button
+								type="button"
+								onclick={selectAllTypes}
+								class="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+							>
+								All
+							</button>
+							<span class="text-xs text-gray-400">|</span>
+							<button
+								type="button"
+								onclick={deselectAllTypes}
+								class="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+							>
+								None
+							</button>
+						</div>
 					</div>
-				{/if}
-			</div>
+					{#if typesExpanded}
+						<div class="space-y-2">
+							{#each availableTypes as typeName}
+								<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
+									<input
+										type="checkbox"
+										checked={selectedTypes.has(typeName)}
+										onchange={() => toggleType(typeName)}
+										class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+									/>
+									<span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{typeName}</span>
+								</label>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	</aside>
 
