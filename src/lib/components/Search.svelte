@@ -342,7 +342,7 @@
 		return results;
 	}
 
-	// Helper function to search an object for matches
+	// Helper function to search an object for matches (optimized with early exit)
 	function searchObjectForMatch(obj, queryLower) {
 		if (typeof obj === 'string') {
 			return obj.toLowerCase().includes(queryLower);
@@ -351,10 +351,24 @@
 			return String(obj).toLowerCase().includes(queryLower);
 		}
 		if (Array.isArray(obj)) {
-			return obj.some(item => searchObjectForMatch(item, queryLower));
+			// Use for loop for early exit instead of .some() for better performance
+			for (let i = 0; i < obj.length; i++) {
+				if (searchObjectForMatch(obj[i], queryLower)) {
+					return true;
+				}
+			}
+			return false;
 		}
 		if (typeof obj === 'object' && obj !== null) {
-			return Object.values(obj).some(value => searchObjectForMatch(value, queryLower));
+			// Use for...in for early exit instead of Object.values().some()
+			for (const key in obj) {
+				if (Object.prototype.hasOwnProperty.call(obj, key)) {
+					if (searchObjectForMatch(obj[key], queryLower)) {
+						return true;
+					}
+				}
+			}
+			return false;
 		}
 		return false;
 	}
@@ -390,7 +404,7 @@
 		return null;
 	}
 
-	function performSearch() {
+	async function performSearch() {
 		isSearching = true;
 		const allResults = [];
 		unfilteredResults = []; // Reset unfiltered results
@@ -421,13 +435,15 @@
 			return;
 		}
 
-		// Search through each file
-		Object.entries(dataFiles).forEach(([fileName, data]) => {
+		// Search through each file (process async to avoid blocking)
+		const fileEntries = Object.entries(dataFiles);
+		for (let i = 0; i < fileEntries.length; i++) {
+			const [fileName, data] = fileEntries[i];
 			const appName = getAppName(fileName);
 
 			// Filter by app - only if apps are selected
 			if (hasAppSelections && !selectedApps.has(appName)) {
-				return;
+				continue;
 			}
 
 			const fileResults = deepSearch(data, query, '', {
@@ -491,7 +507,13 @@
 
 				allResults.push(resultObj);
 			}
-		});
+			
+			// Yield to browser every file to prevent blocking
+			await new Promise(resolve => setTimeout(resolve, 0));
+			
+			// Update results incrementally for better perceived performance (every file)
+			searchResults = [...allResults];
+		}
 
 		searchResults = allResults;
 		isSearching = false;
@@ -514,8 +536,8 @@
 		if (hasQuery || hasSelections) {
 			// Debounce the search to avoid blocking UI
 			searchEffectTimeout = setTimeout(() => {
-				performSearch();
-			}, 100);
+				performSearch().catch(console.error);
+			}, 200);
 		} else {
 			searchResults = [];
 			unfilteredResults = [];
@@ -882,3 +904,4 @@
 		{/if}
 	</div>
 </div>
+
