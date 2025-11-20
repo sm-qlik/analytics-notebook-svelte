@@ -116,10 +116,6 @@
 		Array.from(new Set(unfilteredResults.map((r) => r.objectType).filter((t): t is string => Boolean(t)))).sort()
 	);
 	
-	// Show type filters only if apps or sheets are selected and there are results
-	const showTypeFilters = $derived(
-		(selectedApps.size > 0 || selectedSheets.size > 0) && availableTypes.length > 0
-	);
 
 	// Deep search function that searches through nested objects
 	function deepSearch(obj, query, path = '', context = {}) {
@@ -740,9 +736,8 @@
 			</div>
 
 			<!-- Type Filters -->
-			{#if showTypeFilters}
-				<div>
-					<div class="flex items-center justify-between mb-3">
+			<div>
+				<div class="flex items-center justify-between mb-3">
 						<button
 							type="button"
 							onclick={() => (typesExpanded = !typesExpanded)}
@@ -781,7 +776,7 @@
 							</button>
 						</div>
 					</div>
-					{#if typesExpanded}
+					{#if typesExpanded && availableTypes.length > 0}
 						<div class="space-y-2">
 							{#each availableTypes as typeName}
 								<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
@@ -797,7 +792,6 @@
 						</div>
 					{/if}
 				</div>
-			{/if}
 		</div>
 	</aside>
 
