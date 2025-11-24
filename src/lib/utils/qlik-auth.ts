@@ -93,12 +93,17 @@ export function parseTenantUrl(tenantUrl: string): TenantInfo {
  * Get OAuth redirect URI (from env or default)
  */
 export function getOAuthRedirectUri(): string {
+
+	console.log('tye of window', typeof window);
+	
 	if (typeof window !== 'undefined') {
 		// Check for environment variable injected at build time
 		const envRedirectUri = (window as any).ENV?.OAUTH_REDIRECT_URI;
 		if (envRedirectUri) {
 			return envRedirectUri;
 		}
+
+		console.log('callback url', `${window.location.origin}/oauth-callback`)
 		// Default to current origin + /oauth-callback
 		return `${window.location.origin}/oauth-callback`;
 	}
