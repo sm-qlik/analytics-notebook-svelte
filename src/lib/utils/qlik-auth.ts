@@ -8,7 +8,8 @@ export const DOMAIN_CLIENT_MAPPING: Record<string, string> = {
 	'us.qlikcloud.com': '1803ea5e323590d73883f4416c111e53',
 	'eu.qlikcloud.com': '96200981eed552c0af73e18d85ab6b09',
 	'us.qlik-stage.com': '1575c7dd959e43dc4b31bea208371b91',
-	'eu.qlik-stage.com': '099e42704f4dc6b8d31c23f9c7444a1a'
+	'eu.qlik-stage.com': '099e42704f4dc6b8d31c23f9c7444a1a',
+	'sifx9helisbxc3f.us.qlikcloud.com': 'ad1af63f7850092f2199f879ed26ed5a'
 };
 
 export interface TenantInfo {
@@ -94,19 +95,23 @@ export function parseTenantUrl(tenantUrl: string): TenantInfo {
  */
 export function getOAuthRedirectUri(): string {
 
-	console.log('tye of window', typeof window);
+    console.log('window type', typeof window); 
 	
 	if (typeof window !== 'undefined') {
 		// Check for environment variable injected at build time
 		const envRedirectUri = (window as any).ENV?.OAUTH_REDIRECT_URI;
 		if (envRedirectUri) {
+			
+			console.log('environment redirect', envRedirectUri); 
 			return envRedirectUri;
 		}
 
-		console.log('callback url', `${window.location.origin}/oauth-callback`)
 		// Default to current origin + /oauth-callback
 		return `${window.location.origin}/oauth-callback`;
+
+
 	}
+	
 	return '/oauth-callback';
 }
 
