@@ -11,7 +11,10 @@
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
+		sheetUrl?: string | null;
 		chartId?: string | null;
+		chartTitle?: string | null;
+		chartUrl?: string | null;
 	}
 
 	interface Props {
@@ -66,20 +69,22 @@
 						<th class="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
 						<th class="w-[25%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
 						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">App</th>
-						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
-						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
-						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet URL</th>
-						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart URL</th>
+					<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
+					<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+					<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart Title</th>
 					</tr>
 				</thead>
 				<tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
 					{#each results as result}
-						{@const obj = result.object}
-						{@const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || 'N/A'}
-						{@const definition = obj?.qDef || 'N/A'}
-						{@const sheetName = result.sheet || result.sheetName || 'N/A'}
-						{@const sheetId = result.sheetId || result.context?.sheetId || null}
-						{@const chartId = result.chartId || obj?.qInfo?.qId || null}
+					{@const obj = result.object}
+					{@const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || 'N/A'}
+					{@const definition = obj?.qDef || 'N/A'}
+					{@const sheetName = result.sheet || result.sheetName || 'N/A'}
+					{@const sheetId = result.sheetId || result.context?.sheetId || null}
+					{@const sheetUrl = result.sheetUrl || result.context?.sheetUrl || null}
+					{@const chartId = result.chartId || obj?.qInfo?.qId || null}
+					{@const chartTitle = result.chartTitle || result.context?.chartTitle || null}
+					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null}
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="truncate" title={title}>{title}</div>
@@ -130,30 +135,39 @@
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="truncate" title={result.app}>{result.app}</div>
 							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+							{#if sheetUrl && sheetName !== 'N/A'}
+								<a
+									href={sheetUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="text-blue-600 dark:text-blue-400 hover:underline truncate block"
+									title={sheetName}
+								>
+									{sheetName}
+								</a>
+							{:else}
 								<div class="truncate" title={sheetName}>{sheetName}</div>
-							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								<div class="truncate" title={result.objectType}>{result.objectType}</div>
-							</td>
-							<td class="px-4 py-4 text-sm">
-								{#if sheetId}
-									<div class="truncate" title={sheetId}>
-										<span class="text-blue-600 dark:text-blue-400 font-mono text-xs">{sheetId}</span>
-									</div>
-								{:else}
-									<span class="text-gray-400">N/A</span>
-								{/if}
-							</td>
-							<td class="px-4 py-4 text-sm">
-								{#if chartId}
-									<div class="truncate" title={chartId}>
-										<span class="text-blue-600 dark:text-blue-400 font-mono text-xs">{chartId}</span>
-									</div>
-								{:else}
-									<span class="text-gray-400">N/A</span>
-								{/if}
-							</td>
+							{/if}
+						</td>
+						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+							<div class="truncate" title={result.objectType}>{result.objectType}</div>
+						</td>
+					<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+							{#if chartUrl && chartTitle}
+								<a
+									href={chartUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="text-blue-600 dark:text-blue-400 hover:underline truncate block"
+									title={chartTitle}
+								>
+									{chartTitle}
+								</a>
+							{:else}
+								<span class="text-gray-400">N/A</span>
+							{/if}
+						</td>
 						</tr>
 					{/each}
 				</tbody>

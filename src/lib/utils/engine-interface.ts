@@ -203,7 +203,9 @@ export class EngineInterface {
 				const sheetLayout = await sheet.getLayout();
 				const sheetId = sheetProps.qProperty.qInfo.qId;
 				sheetProps.published = !!sheetLayout?.qMeta?.published;
-				const sheetUrl = `https://${tenantUrl}/sense/app/${appId}/sheet/${sheetId}`;
+				// Ensure tenantUrl doesn't already have https://
+				const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
+				const sheetUrl = `https://${cleanTenantUrl}/sense/app/${appId}/sheet/${sheetId}`;
 				const sheetInfo = {
 					sheetId,
 					sheetTitle: sheetProps.qProperty.qMetaDef.title,

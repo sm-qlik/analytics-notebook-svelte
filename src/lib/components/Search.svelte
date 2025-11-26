@@ -22,7 +22,10 @@
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
+		sheetUrl?: string | null;
 		chartId?: string | null;
+		chartTitle?: string | null;
+		chartUrl?: string | null;
 	}>);
 	let unfilteredResults = $state([] as Array<{
 		path: string;
@@ -34,7 +37,10 @@
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
+		sheetUrl?: string | null;
 		chartId?: string | null;
+		chartTitle?: string | null;
+		chartUrl?: string | null;
 	}>);
 	let isSearching = $state(false);
 	let isLoadingApps = $state(false);
@@ -251,7 +257,10 @@
 						sheet: sheetName || null,
 						sheetName: sheetName || null,
 						sheetId: newContext.sheetId || null,
+						sheetUrl: newContext.sheetUrl || null,
 						chartId: chartId,
+						chartTitle: newContext.chartTitle || null,
+						chartUrl: newContext.chartUrl || null,
 						searchableText
 					});
 				}
@@ -328,6 +337,9 @@
 			appStructure.sheetDimensions.forEach((dim: any, index: number) => {
 				const sheetId = dim.sheetId;
 				const sheetName = dim.sheetTitle || getSheetNameFromId(sheetId) || null;
+				const sheetUrl = dim.sheetUrl || null;
+				const chartTitle = dim.chartTitle || null;
+				const chartUrl = dim.chartUrl || null;
 				
 				if (dim.qDef) {
 					extractObjects(
@@ -339,7 +351,10 @@
 							inSheetDimensions: true,
 							inQdim: true,
 							sheetId,
-							sheetName
+							sheetName,
+							sheetUrl,
+							chartTitle,
+							chartUrl
 						},
 						appId,
 						appName,
@@ -357,7 +372,10 @@
 								inSheetDimensions: true,
 								inQdim: true,
 								sheetId,
-								sheetName
+								sheetName,
+								sheetUrl,
+								chartTitle,
+								chartUrl
 							},
 							appId,
 							appName,
@@ -370,6 +388,9 @@
 			appStructure.sheetMeasures.forEach((measure: any, index: number) => {
 				const sheetId = measure.sheetId;
 				const sheetName = measure.sheetTitle || getSheetNameFromId(sheetId) || null;
+				const sheetUrl = measure.sheetUrl || null;
+				const chartTitle = measure.chartTitle || null;
+				const chartUrl = measure.chartUrl || null;
 				
 				if (measure.qDef) {
 					extractObjects(
@@ -381,7 +402,10 @@
 							inSheetMeasures: true,
 							inQmeasure: true,
 							sheetId,
-							sheetName
+							sheetName,
+							sheetUrl,
+							chartTitle,
+							chartUrl
 						},
 						appId,
 						appName,
@@ -399,7 +423,10 @@
 								inSheetMeasures: true,
 								inQmeasure: true,
 								sheetId,
-								sheetName
+								sheetName,
+								sheetUrl,
+								chartTitle,
+								chartUrl
 							},
 							appId,
 							appName,
@@ -728,18 +755,19 @@
 				}
 			}
 
-			unfilteredResults.push({
-				path: item.path,
-				object: item.object,
-				objectType: item.objectType,
-				context: item.context,
-				file: item.file,
-				app: item.app,
-				sheet: sheetName,
-				sheetName: sheetName
-			});
-
-			if (hasTypeFilters) {
+				unfilteredResults.push({
+					path: item.path,
+					object: item.object,
+					objectType: item.objectType,
+					context: item.context,
+					file: item.file,
+					app: item.app,
+					sheet: sheetName,
+					sheetName: sheetName,
+					sheetUrl: item.sheetUrl || null,
+					chartTitle: item.chartTitle || null,
+					chartUrl: item.chartUrl || null
+				});			if (hasTypeFilters) {
 				if (!item.objectType) {
 					continue;
 				}
@@ -748,21 +776,22 @@
 				}
 			}
 
-			allResults.push({
-				path: item.path,
-				object: item.object,
-				objectType: item.objectType,
-				context: item.context,
-				file: item.file,
-				app: item.app,
-				sheet: sheetName,
-				sheetName: sheetName,
-				sheetId: item.sheetId || null,
-				chartId: item.chartId || null
-			});
-		}
-
-		searchResults = allResults;
+		allResults.push({
+			path: item.path,
+			object: item.object,
+			objectType: item.objectType,
+			context: item.context,
+			file: item.file,
+			app: item.app,
+			sheet: sheetName,
+			sheetName: sheetName,
+			sheetId: item.sheetId || null,
+			sheetUrl: item.sheetUrl || null,
+			chartId: item.chartId || null,
+			chartTitle: item.chartTitle || null,
+			chartUrl: item.chartUrl || null
+		});
+	}		searchResults = allResults;
 		isSearching = false;
 	}
 
@@ -903,26 +932,30 @@
 			return;
 		}
 
-		const excelData = searchResults.map((result) => {
-			const obj = result.object;
-			const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || 'N/A';
-			const definition = obj?.qDef || 'N/A';
-			const sheetName = result.sheet || result.sheetName || 'N/A';
-			const sheetId = result.sheetId || result.context?.sheetId || null;
-			const chartId = result.chartId || obj?.qInfo?.qId || null;
+	const excelData = searchResults.map((result) => {
+		const obj = result.object;
+		const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || 'N/A';
+		const definition = obj?.qDef || 'N/A';
+		const sheetName = result.sheet || result.sheetName || 'N/A';
+		const sheetId = result.sheetId || result.context?.sheetId || null;
+		const sheetUrl = result.sheetUrl || result.context?.sheetUrl || null;
+		const chartId = result.chartId || obj?.qInfo?.qId || null;
+		const chartTitle = result.chartTitle || result.context?.chartTitle || null;
+		const chartUrl = result.chartUrl || result.context?.chartUrl || null;
 
-			return {
-				Title: title,
-				Definition: definition,
-				App: result.app,
-				Sheet: sheetName,
-				Type: result.objectType || 'N/A',
-				'Sheet ID': sheetId || 'N/A',
-				'Chart ID': chartId || 'N/A'
-			};
-		});
-
-		const worksheet = XLSX.utils.json_to_sheet(excelData);
+		return {
+			Title: title,
+			Definition: definition,
+			App: result.app,
+			Sheet: sheetName,
+			Type: result.objectType || 'N/A',
+			'Sheet ID': sheetId || 'N/A',
+			'Sheet URL': sheetUrl || 'N/A',
+			'Chart Title': chartTitle || 'N/A',
+			'Chart URL': chartUrl || 'N/A',
+			'Chart ID': chartId || 'N/A'
+		};
+	});		const worksheet = XLSX.utils.json_to_sheet(excelData);
 		const workbook = XLSX.utils.book_new();
 		XLSX.utils.book_append_sheet(workbook, worksheet, 'Search Results');
 
