@@ -26,6 +26,7 @@
 		chartId?: string | null;
 		chartTitle?: string | null;
 		chartUrl?: string | null;
+		labels?: string[];
 	}>);
 	let unfilteredResults = $state([] as Array<{
 		path: string;
@@ -41,6 +42,7 @@
 		chartId?: string | null;
 		chartTitle?: string | null;
 		chartUrl?: string | null;
+		labels?: string[];
 	}>);
 	let isSearching = $state(false);
 	let isLoadingApps = $state(false);
@@ -613,9 +615,16 @@
 
 		searchableIndex = index;
 
-		fuseInstance = new Fuse(index, {
+		// Create a searchable labels string for each item for Fuse.js
+		const indexWithLabelsString = index.map(item => ({
+			...item,
+			labelsString: item.labels.join(' ')
+		}));
+		
+		fuseInstance = new Fuse(indexWithLabelsString, {
 			keys: [
 				{ name: 'title', weight: 0.5 },
+				{ name: 'labelsString', weight: 0.4 },
 				{ name: 'searchableText', weight: 0.3 },
 				{ name: 'app', weight: 0.1 },
 				{ name: 'sheetName', weight: 0.05 },
@@ -623,8 +632,13 @@
 			],
 			threshold: 0.3,
 			includeScore: true,
-			minMatchCharLength: 1
+			minMatchCharLength: 1,
+			ignoreLocation: true,
+			findAllMatches: true
 		});
+		
+		// Update searchableIndex to use the version with labelsString
+		searchableIndex = indexWithLabelsString;
 	}
 
 	async function loadSpaces() {
@@ -1021,7 +1035,8 @@
 					sheetName: sheetName,
 					sheetUrl: item.sheetUrl || null,
 					chartTitle: item.chartTitle || null,
-					chartUrl: item.chartUrl || null
+					chartUrl: item.chartUrl || null,
+					labels: item.labels || []
 				});			if (hasTypeFilters) {
 				if (!item.objectType) {
 					continue;
@@ -1044,7 +1059,8 @@
 			sheetUrl: item.sheetUrl || null,
 			chartId: item.chartId || null,
 			chartTitle: item.chartTitle || null,
-			chartUrl: item.chartUrl || null
+			chartUrl: item.chartUrl || null,
+			labels: item.labels || []
 		});
 	}		searchResults = allResults;
 		isSearching = false;
