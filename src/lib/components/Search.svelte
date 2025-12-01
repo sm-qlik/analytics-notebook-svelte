@@ -49,8 +49,9 @@
 	let loadingProgress = $state({ current: 0, total: 0, currentApp: '' });
 	
 	let qlikApps = $state<Array<{ id: string; name: string; data: any }>>([]);
-	let apps = $state<Array<{ name: string; id: string }>>([]);
-	let appItems = $state<Array<{ resourceId: string; name: string }>>([]);
+	let apps = $state<Array<{ name: string; id: string; spaceId?: string }>>([]);
+	let appItems = $state<Array<{ resourceId: string; name: string; spaceId?: string }>>([]);
+	let spaces = $state<Array<{ name: string; id: string }>>([]);
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string }>>([]);
 	let loadingAppIds = $state<Set<string>>(new Set());
 	
@@ -75,6 +76,18 @@
 		).sort()
 	);
 	
+	const availableSpaces = $derived(
+		Array.from(new Set(spaces.map((s) => s.name))).sort()
+	);
+	
+	const availableApps = $derived(
+		apps.filter((app) => {
+			if (selectedSpaces.size === 0) return true;
+			return app.spaceId && selectedSpaces.has(app.spaceId);
+		})
+	);
+	
+	let selectedSpaces = $state(new Set<string>());
 	let selectedApps = $state(new Set<string>());
 	let selectedSheets = $state(new Set<string>());
 	let selectedTypes = $state(new Set<string>());
@@ -93,8 +106,13 @@
 		sheet: string | null;
 		sheetName: string | null;
 		sheetId: string | null;
+		sheetUrl: string | null;
 		chartId: string | null;
+		chartTitle: string | null;
+		chartUrl: string | null;
 		searchableText: string;
+		labels: string[];
+		title: string;
 	};
 
 	let searchableIndex: SearchableItem[] = $state([]);
@@ -104,7 +122,7 @@
 		if (obj === null || obj === undefined) return '';
 		
 		const searchableFields: string[] = [];
-		const fieldsToSearch = ['qFieldDefs', 'qFieldLabels', 'qLabelExpression', 'qAlias', 'title', 'qDef'];
+		const fieldsToSearch = ['qFieldDefs', 'qFieldLabels', 'qLabelExpression', 'qAlias', 'title', 'qDef', 'qTitle'];
 		
 		function flattenValue(value: any): string {
 			if (value === null || value === undefined) return '';
@@ -132,6 +150,112 @@
 		});
 		
 		return searchableFields.join(' ');
+	}
+
+	function extractLabels(obj: any, parentObj: any = null, context: any = null): string[] {
+		if (obj === null && parentObj === null && context === null) return [];
+		
+		const labels: string[] = [];
+		
+		// Helper function to extract string from qTitle (can be string or object with qv property)
+		function extractQTitle(qTitle: any): string | null {
+			if (!qTitle) return null;
+			if (typeof qTitle === 'string' && qTitle.trim()) {
+				return qTitle.trim();
+			}
+			if (typeof qTitle === 'object' && qTitle.qv && typeof qTitle.qv === 'string' && qTitle.qv.trim()) {
+				return qTitle.qv.trim();
+			}
+			return null;
+		}
+		
+		// Helper function to extract qFieldLabels (can be array of strings)
+		function extractQFieldLabels(qFieldLabels: any): string[] {
+			if (!qFieldLabels) return [];
+			const extracted: string[] = [];
+			if (Array.isArray(qFieldLabels)) {
+				qFieldLabels.forEach((label: any) => {
+					if (typeof label === 'string' && label.trim()) {
+						extracted.push(label.trim());
+					}
+				});
+			} else if (typeof qFieldLabels === 'string' && qFieldLabels.trim()) {
+				extracted.push(qFieldLabels.trim());
+			}
+			return extracted;
+		}
+		
+		// Check the object itself first (for master dimensions/measures where obj is qDim or qMeasure)
+		if (typeof obj === 'object' && obj !== null) {
+			// Extract qLabel
+			if (obj.qLabel && typeof obj.qLabel === 'string' && obj.qLabel.trim()) {
+				labels.push(obj.qLabel.trim());
+			}
+			// Extract qTitle
+			const qTitle = extractQTitle(obj.qTitle);
+			if (qTitle) {
+				labels.push(qTitle);
+			}
+			// Extract qFieldLabels from object
+			const objFieldLabels = extractQFieldLabels(obj.qFieldLabels);
+			if (objFieldLabels.length > 0) {
+				labels.push(...objFieldLabels);
+			}
+		}
+		
+		// If obj is a qDef string or we need to check parentObj, look there
+		if (parentObj && typeof parentObj === 'object') {
+			// Check if parentObj has qDim with qLabel (for master dimension references)
+			if (parentObj.qDim?.qLabel && typeof parentObj.qDim.qLabel === 'string' && parentObj.qDim.qLabel.trim()) {
+				labels.push(parentObj.qDim.qLabel.trim());
+			}
+			const qDimTitle = extractQTitle(parentObj.qDim?.qTitle);
+			if (qDimTitle) {
+				labels.push(qDimTitle);
+			}
+			// Extract qFieldLabels from qDim
+			const qDimFieldLabels = extractQFieldLabels(parentObj.qDim?.qFieldLabels);
+			labels.push(...qDimFieldLabels);
+			// Check if parentObj has qMeasure with qLabel (for master measure references)
+			if (parentObj.qMeasure?.qLabel && typeof parentObj.qMeasure.qLabel === 'string' && parentObj.qMeasure.qLabel.trim()) {
+				labels.push(parentObj.qMeasure.qLabel.trim());
+			}
+			const qMeasureTitle = extractQTitle(parentObj.qMeasure?.qTitle);
+			if (qMeasureTitle) {
+				labels.push(qMeasureTitle);
+			}
+			// Extract qFieldLabels from qMeasure
+			const qMeasureFieldLabels = extractQFieldLabels(parentObj.qMeasure?.qFieldLabels);
+			labels.push(...qMeasureFieldLabels);
+			// Check parentObj directly for qLabel and qTitle
+			if (parentObj.qLabel && typeof parentObj.qLabel === 'string' && parentObj.qLabel.trim()) {
+				labels.push(parentObj.qLabel.trim());
+			}
+			const parentQTitle = extractQTitle(parentObj.qTitle);
+			if (parentQTitle) {
+				labels.push(parentQTitle);
+			}
+			// Extract qFieldLabels from parentObj directly
+			const parentFieldLabels = extractQFieldLabels(parentObj.qFieldLabels);
+			labels.push(...parentFieldLabels);
+		}
+		
+		// Extract chartTitle and sheetTitle from context
+		if (context && typeof context === 'object') {
+			if (context.chartTitle && typeof context.chartTitle === 'string' && context.chartTitle.trim()) {
+				labels.push(context.chartTitle.trim());
+			}
+			if (context.sheetName && typeof context.sheetName === 'string' && context.sheetName.trim()) {
+				labels.push(context.sheetName.trim());
+			}
+			// Also check for sheetTitle (alternative name)
+			if (context.sheetTitle && typeof context.sheetTitle === 'string' && context.sheetTitle.trim()) {
+				labels.push(context.sheetTitle.trim());
+			}
+		}
+		
+		// Remove duplicates and return
+		return [...new Set(labels)];
 	}
 
 	function buildSearchableIndex() {
@@ -233,14 +357,50 @@
 				sheetId: sheetId || context.sheetId
 			};
 
-			const isQdimObject = (path.endsWith('.qDim') || (path.endsWith('.qDef') && inSheetDimensions)) && typeof obj === 'object';
-			const isQmeasureObject = (path.endsWith('.qMeasure') || (path.endsWith('.qDef') && inSheetMeasures)) && typeof obj === 'object';
+			const isQdimObject = (path.endsWith('.qDim') || (path.endsWith('.qDef') && inSheetDimensions));
+			const isQmeasureObject = (path.endsWith('.qMeasure') || (path.endsWith('.qDef') && inSheetMeasures));
+			
+			// For qDef that are strings, we still want to process them but use parentObj for label extraction
+			const shouldProcessAsObject = (isQdimObject || isQmeasureObject) && typeof obj === 'object';
+			const shouldProcessAsString = (isQdimObject || isQmeasureObject) && typeof obj === 'string';
 
-			if (isQdimObject || isQmeasureObject) {
+			if (shouldProcessAsObject || shouldProcessAsString) {
 				const objectPath = path;
 				if (!processedObjects.has(objectPath)) {
 					processedObjects.set(objectPath, true);
-					const searchableText = extractSearchableFields(obj);
+					// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
+					const labels = shouldProcessAsString 
+						? extractLabels(null, parentObj, newContext)
+						: extractLabels(obj, parentObj, newContext);
+					
+					// Debug: log first few items to see what we're getting
+					if (index.length < 3) {
+						console.log('=== Label Extraction Debug ===');
+						console.log('Path:', path);
+						console.log('Obj type:', typeof obj);
+						console.log('Obj:', obj);
+						console.log('Obj keys:', typeof obj === 'object' && obj !== null ? Object.keys(obj) : 'N/A');
+						console.log('Obj.qLabel:', typeof obj === 'object' && obj !== null ? obj.qLabel : 'N/A');
+						console.log('Obj.qFieldLabels:', typeof obj === 'object' && obj !== null ? obj.qFieldLabels : 'N/A');
+						console.log('ParentObj:', parentObj);
+						console.log('ParentObj keys:', parentObj && typeof parentObj === 'object' ? Object.keys(parentObj) : 'N/A');
+						console.log('ParentObj.qDim:', parentObj && typeof parentObj === 'object' ? parentObj.qDim : 'N/A');
+						console.log('ParentObj.qMeasure:', parentObj && typeof parentObj === 'object' ? parentObj.qMeasure : 'N/A');
+						console.log('Context:', newContext);
+						console.log('Extracted labels:', labels);
+						console.log('Labels length:', labels.length);
+						console.log('==============================');
+					}
+					
+					let searchableText = extractSearchableFields(obj);
+					// Add labels to searchable text so they can be searched
+					if (labels.length > 0) {
+						searchableText += ' ' + labels.join(' ');
+					}
+					
+					// Extract title from object
+					const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || '';
+					
 					let chartId = null;
 					if (parentObj && typeof parentObj === 'object' && parentObj.qInfo?.qId) {
 						chartId = parentObj.qInfo.qId;
@@ -261,7 +421,9 @@
 						chartId: chartId,
 						chartTitle: newContext.chartTitle || null,
 						chartUrl: newContext.chartUrl || null,
-						searchableText
+						searchableText,
+						labels,
+						title
 					});
 				}
 				return;
@@ -342,6 +504,12 @@
 				const chartUrl = dim.chartUrl || null;
 				
 				if (dim.qDef) {
+					// For inline qDef, we need to find the library reference if it exists for label extraction
+					let libraryDimForLabels = null;
+					if (dim.qLibraryId) {
+						libraryDimForLabels = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
+					}
+					// Pass the library dimension as parentObj so we can extract labels from it
 					extractObjects(
 						dim.qDef,
 						`sheetDimensions[${index}].qDef`,
@@ -358,7 +526,7 @@
 						},
 						appId,
 						appName,
-						dim
+						libraryDimForLabels || dim // Use library dim if available for label extraction
 					);
 				} else if (dim.qLibraryId) {
 					const libraryDim = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
@@ -379,7 +547,7 @@
 							},
 							appId,
 							appName,
-							dim
+							libraryDim // Pass the full library dimension object
 						);
 					}
 				}
@@ -393,6 +561,12 @@
 				const chartUrl = measure.chartUrl || null;
 				
 				if (measure.qDef) {
+					// For inline qDef, we need to find the library reference if it exists for label extraction
+					let libraryMeasureForLabels = null;
+					if (measure.qLibraryId) {
+						libraryMeasureForLabels = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
+					}
+					// Pass the library measure as parentObj so we can extract labels from it
 					extractObjects(
 						measure.qDef,
 						`sheetMeasures[${index}].qDef`,
@@ -409,7 +583,7 @@
 						},
 						appId,
 						appName,
-						measure
+						libraryMeasureForLabels || measure // Use library measure if available for label extraction
 					);
 				} else if (measure.qLibraryId) {
 					const libraryMeasure = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
@@ -430,7 +604,7 @@
 							},
 							appId,
 							appName,
-							measure
+							libraryMeasure // Pass the full library measure object
 						);
 					}
 				}
@@ -440,11 +614,73 @@
 		searchableIndex = index;
 
 		fuseInstance = new Fuse(index, {
-			keys: ['searchableText', 'path', 'app', 'sheetName', 'objectType'],
+			keys: [
+				{ name: 'title', weight: 0.5 },
+				{ name: 'searchableText', weight: 0.3 },
+				{ name: 'app', weight: 0.1 },
+				{ name: 'sheetName', weight: 0.05 },
+				{ name: 'objectType', weight: 0.05 }
+			],
 			threshold: 0.3,
 			includeScore: true,
 			minMatchCharLength: 1
 		});
+	}
+
+	async function loadSpaces() {
+		try {
+			const authState = authStore;
+			let currentAuthState: any = null;
+			const unsubscribe = authState.subscribe(state => {
+				currentAuthState = state;
+			});
+			unsubscribe();
+			
+			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
+				throw new Error('Not authenticated');
+			}
+			
+			const tenantUrl = currentAuthState.tenantUrl;
+			const tenantInfo = parseTenantUrl(tenantUrl);
+			const qlikApi = await loadQlikAPI();
+			
+			// Check if spaces API is available
+			console.log('Qlik API keys:', Object.keys(qlikApi));
+			if (!qlikApi.spaces) {
+				console.warn('Spaces API not available in this Qlik API version. Available APIs:', Object.keys(qlikApi));
+				spaces = [];
+				return;
+			}
+			
+			const { auth, spaces: spacesApi } = qlikApi;
+			console.log('Spaces API methods:', Object.keys(spacesApi));
+			
+			const authConfig = createAuthConfig(tenantInfo);
+			auth.setDefaultHostConfig(authConfig);
+			
+			const spacesResponse = await spacesApi.getSpaces();
+			if (spacesResponse.status !== 200) {
+				throw new Error(`Failed to get spaces: ${spacesResponse.status}`);
+			}
+			
+			const allSpaces = spacesResponse.data?.data || [];
+			console.log('Loaded spaces:', allSpaces);
+			spaces = allSpaces
+				.map((space: any, index: number) => {
+					// Try multiple possible ID fields
+					const id = space.resourceId || space.id || space.spaceId || `space-${index}`;
+					return {
+						name: space.name || space.resourceId || space.id || `Space ${index + 1}`,
+						id: id
+					};
+				})
+				.filter((space: any) => space.id && space.id !== 'undefined'); // Filter out any spaces without a valid ID
+			console.log('Mapped spaces:', spaces);
+		} catch (err: any) {
+			console.error('Failed to load spaces:', err);
+			// Don't throw - spaces might not be available in all tenants
+			spaces = [];
+		}
 	}
 
 	async function loadAppList() {
@@ -473,7 +709,13 @@
 			const authConfig = createAuthConfig(tenantInfo);
 			auth.setDefaultHostConfig(authConfig);
 			
-			const itemsResponse = await items.getItems();
+			// Load spaces in parallel with apps (don't await to avoid blocking)
+			loadSpaces().catch(err => {
+				console.warn('Failed to load spaces (this is optional):', err);
+				// Spaces are optional, so we don't throw - just leave spaces array empty
+			});
+			
+			const itemsResponse = await items.getItems({ limit: 100 });
 			if (itemsResponse.status !== 200) {
 				throw new Error(`Failed to get items: ${itemsResponse.status}`);
 			}
@@ -482,7 +724,8 @@
 			appItems = allApps;
 			apps = allApps.map((app: any) => ({
 				name: app.name || app.resourceId,
-				id: app.resourceId
+				id: app.resourceId,
+				spaceId: app.spaceId || app.space?.resourceId || undefined
 			}));
 			
 			loadAppDataInBackground();
@@ -686,6 +929,7 @@
 		loadingAppIds = new Set();
 		loadingProgress = { current: 0, total: 0, currentApp: '' };
 		
+		selectedSpaces = new Set();
 		selectedApps = new Set();
 		selectedSheets = new Set();
 		selectedTypes = new Set();
@@ -707,19 +951,22 @@
 		const query = searchQuery.trim();
 		const hasQuery = query.length > 0;
 		
+		const hasSpaceSelections = selectedSpaces.size > 0;
 		const hasAppSelections = selectedApps.size > 0;
 		const hasSheetSelections = selectedSheets.size > 0;
 		const hasTypeSelections = selectedTypes.size > 0;
 		
-		const allAppsSelected = hasAppSelections && selectedApps.size === apps.length;
+		const allSpacesSelected = hasSpaceSelections && selectedSpaces.size === spaces.length;
+		const allAppsSelected = hasAppSelections && selectedApps.size === availableApps.length;
 		const allSheetsSelected = hasSheetSelections && availableSheets.length > 0 && selectedSheets.size >= availableSheets.length;
 		const allTypesSelected = hasTypeSelections && selectedTypes.size === typeOptions.length;
 		
+		const hasSpaceFilters = hasSpaceSelections && !allSpacesSelected;
 		const hasAppFilters = hasAppSelections && !allAppsSelected;
 		const hasSheetFilters = hasSheetSelections && (!hasAppSelections || !allSheetsSelected);
 		const hasTypeFilters = hasTypeSelections && !allTypesSelected;
 		
-		const hasAnySelections = hasAppSelections || hasSheetSelections || hasTypeSelections;
+		const hasAnySelections = hasSpaceSelections || hasAppSelections || hasSheetSelections || hasTypeSelections;
 
 		if (!hasQuery && !hasAnySelections && qlikApps.length === 0) {
 			searchResults = [];
@@ -741,6 +988,14 @@
 		
 		for (const item of candidateResults) {
 			const sheetName = item.sheetName || item.sheet;
+			
+			// Filter by space first (if space filter is active)
+			if (hasSpaceFilters) {
+				const app = apps.find(a => a.name === item.app);
+				if (!app || !app.spaceId || !selectedSpaces.has(app.spaceId)) {
+					continue;
+				}
+			}
 
 			if (hasAppFilters && !selectedApps.has(item.app)) {
 				continue;
@@ -801,6 +1056,7 @@
 	
 	$effect(() => {
 		const query = searchQuery;
+		const spacesSize = selectedSpaces.size;
 		const appsSize = selectedApps.size;
 		const sheetsSize = selectedSheets.size;
 		const typesSize = selectedTypes.size;
@@ -811,7 +1067,7 @@
 		}
 		
 		const hasQuery = searchQuery.trim().length > 0;
-		const hasSelections = selectedApps.size > 0 || selectedSheets.size > 0 || selectedTypes.size > 0;
+		const hasSelections = selectedSpaces.size > 0 || selectedApps.size > 0 || selectedSheets.size > 0 || selectedTypes.size > 0;
 		
 		if (hasQuery || hasSelections || qlikApps.length > 0) {
 			isSearching = true;
@@ -841,6 +1097,18 @@
 		searchTimeout = setTimeout(() => {
 			performSearch();
 		}, 300);
+	}
+
+	function toggleSpace(spaceId: string) {
+		console.log('Toggling space:', spaceId, 'Current selected:', Array.from(selectedSpaces));
+		const newSet = createNewSet(selectedSpaces);
+		if (newSet.has(spaceId)) {
+			newSet.delete(spaceId);
+		} else {
+			newSet.add(spaceId);
+		}
+		console.log('New selected:', Array.from(newSet));
+		selectedSpaces = newSet;
 	}
 
 	function toggleApp(appName: string) {
@@ -875,9 +1143,17 @@
 		selectedSheets = newSet;
 	}
 
+	function selectAllSpaces() {
+		selectedSpaces = new Set(spaces.map((s) => s.id));
+	}
+
+	function deselectAllSpaces() {
+		selectedSpaces = new Set();
+	}
+
 	function selectAllApps() {
-		selectedApps = new Set(apps.map((a) => a.name));
-		apps.forEach(app => {
+		selectedApps = new Set(availableApps.map((a) => a.name));
+		availableApps.forEach(app => {
 			loadAppDataPriority(app.id);
 		});
 	}
@@ -942,6 +1218,7 @@
 		const chartId = result.chartId || obj?.qInfo?.qId || null;
 		const chartTitle = result.chartTitle || result.context?.chartTitle || null;
 		const chartUrl = result.chartUrl || result.context?.chartUrl || null;
+		const labels = result.labels || [];
 
 		return {
 			Title: title,
@@ -949,6 +1226,7 @@
 			App: result.app,
 			Sheet: sheetName,
 			Type: result.objectType || 'N/A',
+			Labels: labels.length > 0 ? labels.join(', ') : 'N/A',
 			'Sheet ID': sheetId || 'N/A',
 			'Sheet URL': sheetUrl || 'N/A',
 			'Chart Title': chartTitle || 'N/A',
@@ -968,15 +1246,20 @@
 
 <div class="w-full flex-1 flex min-h-0 gap-4">
 	<FilterSidebar
-		{apps}
+		spaces={spaces}
+		apps={availableApps}
 		{availableSheets}
 		{availableTypes}
+		selectedSpaces={selectedSpaces}
 		{selectedApps}
 		{selectedSheets}
 		{selectedTypes}
+		onToggleSpace={toggleSpace}
 		onToggleApp={toggleApp}
 		onToggleSheet={toggleSheet}
 		onToggleType={toggleType}
+		onSelectAllSpaces={selectAllSpaces}
+		onDeselectAllSpaces={deselectAllSpaces}
 		onSelectAllApps={selectAllApps}
 		onDeselectAllApps={deselectAllApps}
 		onSelectAllSheets={selectAllSheets}

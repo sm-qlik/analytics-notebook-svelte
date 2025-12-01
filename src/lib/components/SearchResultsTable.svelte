@@ -15,6 +15,7 @@
 		chartId?: string | null;
 		chartTitle?: string | null;
 		chartUrl?: string | null;
+		labels?: string[];
 	}
 
 	interface Props {
@@ -66,12 +67,13 @@
 			<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
 				<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
 					<tr>
-						<th class="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
-						<th class="w-[25%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
-						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">App</th>
-					<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
-					<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
-					<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart Title</th>
+						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
+						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Labels</th>
+						<th class="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
+						<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">App</th>
+					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
+					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart Title</th>
 					</tr>
 				</thead>
 				<tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -85,9 +87,23 @@
 					{@const chartId = result.chartId || obj?.qInfo?.qId || null}
 					{@const chartTitle = result.chartTitle || result.context?.chartTitle || null}
 					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null}
+					{@const labels = result.labels || []}
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="truncate" title={title}>{title}</div>
+							</td>
+							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+								{#if labels.length > 0}
+									<div class="flex flex-wrap gap-1">
+										{#each labels as label}
+											<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" title={label}>
+												{label}
+											</span>
+										{/each}
+									</div>
+								{:else}
+									<span class="text-gray-400">N/A</span>
+								{/if}
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="flex items-center gap-2 group">

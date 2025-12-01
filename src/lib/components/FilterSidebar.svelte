@@ -1,14 +1,19 @@
 <script lang="ts">
 	interface Props {
+		spaces: Array<{ name: string; id: string }>;
 		apps: Array<{ name: string; id: string }>;
 		availableSheets: string[];
 		availableTypes: string[];
+		selectedSpaces: Set<string>;
 		selectedApps: Set<string>;
 		selectedSheets: Set<string>;
 		selectedTypes: Set<string>;
+		onToggleSpace: (spaceId: string) => void;
 		onToggleApp: (appName: string) => void;
 		onToggleSheet: (sheetName: string) => void;
 		onToggleType: (typeName: string) => void;
+		onSelectAllSpaces: () => void;
+		onDeselectAllSpaces: () => void;
 		onSelectAllApps: () => void;
 		onDeselectAllApps: () => void;
 		onSelectAllSheets: () => void;
@@ -18,15 +23,20 @@
 	}
 
 	let {
+		spaces,
 		apps,
 		availableSheets,
 		availableTypes,
+		selectedSpaces,
 		selectedApps,
 		selectedSheets,
 		selectedTypes,
+		onToggleSpace,
 		onToggleApp,
 		onToggleSheet,
 		onToggleType,
+		onSelectAllSpaces,
+		onDeselectAllSpaces,
 		onSelectAllApps,
 		onDeselectAllApps,
 		onSelectAllSheets,
@@ -35,6 +45,7 @@
 		onDeselectAllTypes
 	}: Props = $props();
 
+	let spacesExpanded = $state(true);
 	let appsExpanded = $state(true);
 	let sheetsExpanded = $state(true);
 	let typesExpanded = $state(true);
@@ -45,6 +56,77 @@
 		<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Filters</h2>
 	</div>
 	<div class="flex-1 overflow-y-auto p-4 space-y-6">
+		<!-- Space Filters -->
+		{#if spaces && spaces.length > 0}
+			<div>
+				<div class="flex items-center justify-between mb-3">
+					<button
+						type="button"
+						onclick={() => (spacesExpanded = !spacesExpanded)}
+						class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+					>
+						<svg
+							class="w-4 h-4 transition-transform {spacesExpanded ? 'rotate-90' : ''}"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M9 5l7 7-7 7"
+							/>
+						</svg>
+						<span>Spaces ({selectedSpaces.size}/{spaces.length})</span>
+					</button>
+					<div class="flex gap-1">
+						<button
+							type="button"
+							onclick={(e) => {
+								e.stopPropagation();
+								onSelectAllSpaces();
+							}}
+							class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+						>
+							All
+						</button>
+						<span class="text-xs text-gray-400">|</span>
+						<button
+							type="button"
+							onclick={(e) => {
+								e.stopPropagation();
+								onDeselectAllSpaces();
+							}}
+							class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+						>
+							None
+						</button>
+					</div>
+				</div>
+				{#if spacesExpanded}
+					<div class="space-y-2">
+						{#each spaces as space (space.id)}
+							{@const isChecked = selectedSpaces.has(space.id)}
+							{@const spaceId = space.id}
+							<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
+								<input
+									type="checkbox"
+									checked={isChecked}
+									onclick={(e) => {
+										e.stopPropagation();
+										onToggleSpace(spaceId);
+									}}
+									class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+								/>
+								<span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{space.name}</span>
+							</label>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<!-- App Filters -->
 		<div>
 			<div class="flex items-center justify-between mb-3">
@@ -88,7 +170,7 @@
 			</div>
 			{#if appsExpanded}
 				<div class="space-y-2">
-					{#each apps as app}
+					{#each apps as app, index (app.name || `app-${index}`)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 							<input
 								type="checkbox"
@@ -146,7 +228,7 @@
 			</div>
 			{#if sheetsExpanded}
 				<div class="space-y-2">
-					{#each availableSheets as sheetName}
+					{#each availableSheets as sheetName, index (sheetName || `sheet-${index}`)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 							<input
 								type="checkbox"
@@ -204,7 +286,7 @@
 			</div>
 			{#if typesExpanded && availableTypes.length > 0}
 				<div class="space-y-2">
-					{#each availableTypes as typeName}
+					{#each availableTypes as typeName, index (typeName || `type-${index}`)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 							<input
 								type="checkbox"
