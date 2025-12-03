@@ -729,7 +729,7 @@
 				// Spaces are optional, so we don't throw - just leave spaces array empty
 			});
 			
-			const itemsResponse = await items.getItems({ limit: 100 });
+			const itemsResponse = await items.getItems({ resourceType: 'app[directQuery,]', limit: 100 });
 			if (itemsResponse.status !== 200) {
 				throw new Error(`Failed to get items: ${itemsResponse.status}`);
 			}
