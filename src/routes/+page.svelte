@@ -60,7 +60,7 @@
         setTimeout(() => reject(new Error('Authentication check timeout')), 10000)
       );
       
-      const itemsPromise = items.getItems();
+      const itemsPromise = items.getItems({ resourceType: 'app[directQuery,]' });
       const response = await Promise.race([itemsPromise, timeoutPromise]) as any;
       
       if (response && response.status === 200) {
