@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	
 	onMount(() => {
 		// Determine the OAuth host based on the tenant URL stored in localStorage
@@ -31,17 +32,18 @@
 		script.onload = () => {
 			// Give the OAuth callback script time to process and store tokens
 			setTimeout(() => {
-				// Clear any URL parameters before redirecting
-				const cleanUrl = window.location.origin + '/';
-				window.location.href = cleanUrl;
+				// Construct URL with base path to preserve it during redirect
+				const redirectPath = (base || '') + '/';
+				window.location.href = redirectPath;
 			}, 2000);
 		};
 		
 		script.onerror = () => {
 			// If script fails to load, still redirect after a delay
 			setTimeout(() => {
-				const cleanUrl = window.location.origin + '/';
-				window.location.href = cleanUrl;
+				// Construct URL with base path to preserve it during redirect
+				const redirectPath = (base || '') + '/';
+				window.location.href = redirectPath;
 			}, 2000);
 		};
 	});
