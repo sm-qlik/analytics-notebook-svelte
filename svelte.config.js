@@ -12,7 +12,7 @@ const config = {
 			// these options are set automatically — see below
 			pages: 'build',
 			assets: 'build',
-			fallback: 'index.html', // Enable SPA mode for dynamic routes (OAuth callbacks, etc.)
+			fallback: '404.html', // GitHub Pages serves 404.html for missing routes
 			precompress: false,
 			strict: true
 		}),
