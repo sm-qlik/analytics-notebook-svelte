@@ -32,18 +32,18 @@
 		script.onload = () => {
 			// Give the OAuth callback script time to process and store tokens
 			setTimeout(() => {
-				// Construct URL with base path to preserve it during redirect
-				const redirectPath = (base || '') + '/';
-				window.location.href = redirectPath;
+				// Construct full URL with base path to preserve it during redirect
+				const redirectPath = base + '/';
+				window.location.href = window.location.origin + redirectPath;
 			}, 2000);
 		};
 		
 		script.onerror = () => {
 			// If script fails to load, still redirect after a delay
 			setTimeout(() => {
-				// Construct URL with base path to preserve it during redirect
-				const redirectPath = (base || '') + '/';
-				window.location.href = redirectPath;
+				// Construct full URL with base path to preserve it during redirect
+				const redirectPath = base + '/';
+				window.location.href = window.location.origin + redirectPath;
 			}, 2000);
 		};
 	});
