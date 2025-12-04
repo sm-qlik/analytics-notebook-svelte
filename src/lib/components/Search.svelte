@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { loadQlikAPI, parseTenantUrl, createAuthConfig } from '$lib/utils/qlik-auth';
 	import { EngineInterface } from '$lib/utils/engine-interface';
@@ -57,6 +57,9 @@
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string }>>([]);
 	let loadingAppIds = $state<Set<string>>(new Set());
 	let currentTenantHostname = $state('');
+	let hasNewDataPending = $state(false);
+	let lastRefreshedAppsCount = $state(0);
+	let isAuthConfigured = $state(false);
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
 		return new Set(oldSet);
@@ -73,21 +76,23 @@
 		Array.from(
 			new Set(
 				sheets
-					.filter((sheet) => selectedApps.has(sheet.app))
+					.filter((sheet) => selectedApps.has(sheet.appId))
 					.map((sheet) => sheet.name)
 			)
 		).sort()
 	);
 	
 	const availableSpaces = $derived(
-		Array.from(new Set(spaces.map((s) => s.name))).sort()
+		[...spaces].sort((a, b) => a.name.localeCompare(b.name))
 	);
 	
 	const availableApps = $derived(
-		apps.filter((app) => {
-			if (selectedSpaces.size === 0) return true;
-			return app.spaceId && selectedSpaces.has(app.spaceId);
-		})
+		apps
+			.filter((app) => {
+				if (selectedSpaces.size === 0) return true;
+				return app.spaceId && selectedSpaces.has(app.spaceId);
+			})
+			.sort((a, b) => a.name.localeCompare(b.name))
 	);
 	
 	let selectedSpaces = $state(new Set<string>());
@@ -99,6 +104,9 @@
 		Array.from(new Set(unfilteredResults.map((r) => r.objectType).filter((t): t is string => Boolean(t)))).sort()
 	);
 	
+	// Track which apps have been loaded (have data)
+	const loadedAppIds = $derived(new Set(qlikApps.map(a => a.id)));
+	
 	type SearchableItem = {
 		path: string;
 		object: any;
@@ -106,6 +114,7 @@
 		context: any;
 		file: string;
 		app: string;
+		appId: string;
 		sheet: string | null;
 		sheetName: string | null;
 		sheetId: string | null;
@@ -417,6 +426,7 @@
 						context: newContext,
 						file: appId,
 						app: appName,
+						appId: appId,
 						sheet: sheetName || null,
 						sheetName: sheetName || null,
 						sheetId: newContext.sheetId || null,
@@ -642,22 +652,38 @@
 		searchableIndex = indexWithLabelsString;
 	}
 
+	// Configure Qlik API auth once - returns the API module
+	async function ensureAuthConfigured(): Promise<{ qlikApi: any; tenantUrl: string }> {
+		const authState = authStore;
+		let currentAuthState: any = null;
+		const unsubscribe = authState.subscribe(state => {
+			currentAuthState = state;
+		});
+		unsubscribe();
+		
+		if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
+			throw new Error('Not authenticated');
+		}
+		
+		const tenantUrl = currentAuthState.tenantUrl;
+		const qlikApi = await loadQlikAPI();
+		
+		// Only configure auth once per session
+		if (!isAuthConfigured) {
+			const tenantInfo = parseTenantUrl(tenantUrl);
+			const authConfig = createAuthConfig(tenantInfo);
+			const { auth } = qlikApi;
+			auth.setDefaultHostConfig(authConfig);
+			isAuthConfigured = true;
+			console.log('Qlik API auth configured for:', tenantUrl);
+		}
+		
+		return { qlikApi, tenantUrl };
+	}
+
 	async function loadSpaces() {
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
-			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				throw new Error('Not authenticated');
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const tenantInfo = parseTenantUrl(tenantUrl);
-			const qlikApi = await loadQlikAPI();
+			const { qlikApi } = await ensureAuthConfigured();
 			
 			// Check if spaces API is available
 			console.log('Qlik API keys:', Object.keys(qlikApi));
@@ -667,11 +693,8 @@
 				return;
 			}
 			
-			const { auth, spaces: spacesApi } = qlikApi;
+			const { spaces: spacesApi } = qlikApi;
 			console.log('Spaces API methods:', Object.keys(spacesApi));
-			
-			const authConfig = createAuthConfig(tenantInfo);
-			auth.setDefaultHostConfig(authConfig);
 			
 			const spacesResponse = await spacesApi.getSpaces();
 			if (spacesResponse.status !== 200) {
@@ -705,24 +728,8 @@
 		dataLoadError = null;
 		
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
-			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				throw new Error('Not authenticated');
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const tenantInfo = parseTenantUrl(tenantUrl);
-			const qlikApi = await loadQlikAPI();
-			const { auth, items } = qlikApi;
-			
-			const authConfig = createAuthConfig(tenantInfo);
-			auth.setDefaultHostConfig(authConfig);
+			const { qlikApi } = await ensureAuthConfigured();
+			const { items } = qlikApi;
 			
 			// Load spaces in parallel with apps (don't await to avoid blocking)
 			loadSpaces().catch(err => {
@@ -760,19 +767,7 @@
 		loadingProgress = { current: qlikApps.length, total: appItems.length, currentApp: '' };
 		
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
-			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				return;
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const qlikApi = await loadQlikAPI();
+			const { qlikApi, tenantUrl } = await ensureAuthConfigured();
 			const { qix } = qlikApi;
 			
 			const loadedAppIds = new Set(qlikApps.map(a => a.id));
@@ -784,7 +779,7 @@
 				return;
 			}
 			
-			const CONCURRENCY_LIMIT = 3;
+			const CONCURRENCY_LIMIT = 5;
 			
 			async function processApp(appItem: any): Promise<void> {
 				const appId = appItem.resourceId;
@@ -799,8 +794,10 @@
 					currentApp: appName 
 				};
 				
+				let session: any = null;
+				
 				try {
-					const session = await qix.openAppSession({ appId });
+					session = await qix.openAppSession({ appId });
 					const app = await session.getDoc();
 					const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
 					
@@ -826,11 +823,18 @@
 						});
 						sheets = [...sheets, ...newSheets];
 					}
-					await session.close();
 					buildSearchableIndex();
 				} catch (err: any) {
 					console.warn(`Failed to load app ${appName}:`, err);
 				} finally {
+					// Always close the session
+					if (session) {
+						try {
+							await session.close();
+						} catch (closeErr) {
+							console.warn(`Failed to close session for ${appName}:`, closeErr);
+						}
+					}
 					const newLoadingIds = new Set(loadingAppIds);
 					newLoadingIds.delete(appId);
 					loadingAppIds = newLoadingIds;
@@ -867,20 +871,10 @@
 		if (qlikApps.find(a => a.id === appId)) return;
 		if (loadingAppIds.has(appId)) return;
 		
+		let session: any = null;
+		
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
-			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				return;
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const qlikApi = await loadQlikAPI();
+			const { qlikApi, tenantUrl } = await ensureAuthConfigured();
 			const { qix } = qlikApi;
 			
 			const appName = appItem.name || appId;
@@ -891,7 +885,7 @@
 				currentApp: appName 
 			};
 			
-			const session = await qix.openAppSession({ appId });
+			session = await qix.openAppSession({ appId });
 			const app = await session.getDoc();
 			const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
 			
@@ -912,9 +906,21 @@
 				});
 				sheets = [...sheets, ...newSheets];
 			}
-			await session.close();
 			buildSearchableIndex();
 			
+			loadAppDataInBackground();
+			
+		} catch (err: any) {
+			console.warn(`Failed to load app ${appId}:`, err);
+		} finally {
+			// Always close the session
+			if (session) {
+				try {
+					await session.close();
+				} catch (closeErr) {
+					console.warn('Failed to close session:', closeErr);
+				}
+			}
 			const newLoadingIds = new Set(loadingAppIds);
 			newLoadingIds.delete(appId);
 			loadingAppIds = newLoadingIds;
@@ -923,14 +929,6 @@
 				total: appItems.length, 
 				currentApp: '' 
 			};
-			
-			loadAppDataInBackground();
-			
-		} catch (err: any) {
-			console.warn(`Failed to load app ${appId}:`, err);
-			const newLoadingIds = new Set(loadingAppIds);
-			newLoadingIds.delete(appId);
-			loadingAppIds = newLoadingIds;
 		}
 	}
 	
@@ -943,6 +941,9 @@
 		fuseInstance = null;
 		loadingAppIds = new Set();
 		loadingProgress = { current: 0, total: 0, currentApp: '' };
+		hasNewDataPending = false;
+		lastRefreshedAppsCount = 0;
+		// Note: We don't reset isAuthConfigured as the same auth session can be reused
 		
 		selectedSpaces = new Set();
 		selectedApps = new Set();
@@ -953,6 +954,7 @@
 	}
 	
 	onMount(() => {
+		let previousTenantUrl = '';
 		const unsubscribe = authStore.subscribe(state => {
 			// Extract hostname from tenant URL for keying purposes
 			if (state.tenantUrl) {
@@ -962,8 +964,16 @@
 				} catch {
 					currentTenantHostname = state.tenantUrl;
 				}
+				
+				// Reset auth config if tenant URL changed
+				if (previousTenantUrl && previousTenantUrl !== state.tenantUrl) {
+					isAuthConfigured = false;
+				}
+				previousTenantUrl = state.tenantUrl;
 			} else {
 				currentTenantHostname = '';
+				// Reset auth config if logged out
+				isAuthConfigured = false;
 			}
 			
 			if (state.isAuthenticated && appItems.length === 0 && !isLoadingApps) {
@@ -1024,7 +1034,7 @@
 				}
 			}
 
-			if (hasAppFilters && !selectedApps.has(item.app)) {
+			if (hasAppFilters && !selectedApps.has(item.appId)) {
 				continue;
 			}
 
@@ -1083,30 +1093,29 @@
 	
 	let searchEffectTimeout: ReturnType<typeof setTimeout> | null = null;
 	
+	// Effect for filter/query changes - triggers search when filters change
 	$effect(() => {
+		// Read all filter values to create reactive dependencies
 		const query = searchQuery;
 		const spacesSize = selectedSpaces.size;
 		const appsSize = selectedApps.size;
 		const sheetsSize = selectedSheets.size;
 		const typesSize = selectedTypes.size;
-		const qlikAppsLength = qlikApps.length;
 		
 		if (searchEffectTimeout) {
 			clearTimeout(searchEffectTimeout);
 		}
 		
-		const hasQuery = searchQuery.trim().length > 0;
-		const hasSelections = selectedSpaces.size > 0 || selectedApps.size > 0 || selectedSheets.size > 0 || selectedTypes.size > 0;
+		// Use untrack to read qlikApps.length without creating a dependency
+		// This prevents the effect from re-running when new apps load
+		const appsLoaded = untrack(() => qlikApps.length);
 		
-		if (hasQuery || hasSelections || qlikApps.length > 0) {
+		// Only trigger search if we have data loaded
+		if (appsLoaded > 0) {
 			isSearching = true;
 			searchEffectTimeout = setTimeout(() => {
 				performSearch();
 			}, 200);
-		} else {
-			searchResults = [];
-			unfilteredResults = [];
-			isSearching = false;
 		}
 		
 		return () => {
@@ -1115,6 +1124,31 @@
 			}
 		};
 	});
+	
+	// Effect to track when new data is available
+	$effect(() => {
+		const currentAppsCount = qlikApps.length;
+		if (currentAppsCount > lastRefreshedAppsCount) {
+			hasNewDataPending = true;
+		}
+	});
+	
+	// Auto-refresh table when loading completes
+	$effect(() => {
+		const loading = isLoadingAppData;
+		if (!loading && hasNewDataPending && qlikApps.length > 0) {
+			// Loading just completed - auto-refresh the table
+			hasNewDataPending = false;
+			lastRefreshedAppsCount = qlikApps.length;
+			performSearch();
+		}
+	});
+	
+	function refreshTable() {
+		lastRefreshedAppsCount = qlikApps.length;
+		hasNewDataPending = false;
+		performSearch();
+	}
 
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	function handleSearchInput(value: string) {
@@ -1140,24 +1174,21 @@
 		selectedSpaces = newSet;
 	}
 
-	function toggleApp(appName: string) {
+	function toggleApp(appId: string) {
 		const newSet = createNewSet(selectedApps);
-		const wasSelected = newSet.has(appName);
+		const wasSelected = newSet.has(appId);
 		
 		if (wasSelected) {
-			newSet.delete(appName);
+			newSet.delete(appId);
 			const sheetsToRemove = sheets
-				.filter((sheet) => sheet.app === appName)
+				.filter((sheet) => sheet.appId === appId)
 				.map((sheet) => sheet.name);
 			const newSheetsSet = createNewSet(selectedSheets);
 			sheetsToRemove.forEach((sheetName) => newSheetsSet.delete(sheetName));
 			selectedSheets = newSheetsSet;
 		} else {
-			newSet.add(appName);
-			const app = apps.find(a => a.name === appName);
-			if (app) {
-				loadAppDataPriority(app.id);
-			}
+			newSet.add(appId);
+			loadAppDataPriority(appId);
 		}
 		selectedApps = newSet;
 	}
@@ -1181,7 +1212,7 @@
 	}
 
 	function selectAllApps() {
-		selectedApps = new Set(availableApps.map((a) => a.name));
+		selectedApps = new Set(availableApps.map((a) => a.id));
 		availableApps.forEach(app => {
 			loadAppDataPriority(app.id);
 		});
@@ -1275,7 +1306,7 @@
 
 <div class="w-full flex-1 flex min-h-0 gap-4">
 	<FilterSidebar
-		spaces={spaces}
+		spaces={availableSpaces}
 		apps={availableApps}
 		{availableSheets}
 		{availableTypes}
@@ -1283,6 +1314,8 @@
 		{selectedApps}
 		{selectedSheets}
 		{selectedTypes}
+		{loadedAppIds}
+		{loadingAppIds}
 		tenantHostname={currentTenantHostname}
 		onToggleSpace={toggleSpace}
 		onToggleApp={toggleApp}
@@ -1325,6 +1358,8 @@
 					current={loadingProgress.current}
 					total={loadingProgress.total}
 					currentApp={loadingProgress.currentApp}
+					hasNewData={hasNewDataPending}
+					onRefreshTable={refreshTable}
 				/>
 			{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
 				<CompletionIndicator

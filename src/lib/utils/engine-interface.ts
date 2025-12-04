@@ -111,7 +111,7 @@ export class EngineInterface {
 		// Get app layout with metadata
 		const appLayout = await app.getAppLayout();
 
-		// Get master measures
+		// Define props for all list objects
 		const measureListProps = {
 			qInfo: {
 				qId: 'MeasureList',
@@ -127,17 +127,6 @@ export class EngineInterface {
 			},
 		};
 
-		const measurelist = await app.createSessionObject(measureListProps);
-		const measures = await measurelist.getLayout();
-		const masterMeasures = await Promise.all(
-			measures.qMeasureList.qItems.map(async (item: any) => {
-				const measure = await app.getMeasure(item.qInfo.qId);
-				const props = await measure.getProperties();
-				return props;
-			})
-		);
-
-		// Get master dimensions
 		const dimensionListProps = {
 			qInfo: {
 				qId: 'DimensionList',
@@ -155,17 +144,6 @@ export class EngineInterface {
 			},
 		};
 
-		const dimensionList = await app.createSessionObject(dimensionListProps);
-		const dimensions = await dimensionList.getLayout();
-		const masterDimensions = await Promise.all(
-			dimensions.qDimensionList.qItems.map(async (item: any) => {
-				const dimension = await app.getDimension(item.qInfo.qId);
-				const props = await dimension.getProperties();
-				return props;
-			})
-		);
-
-		// Get sheets
 		const sheetListProps = {
 			qInfo: {
 				qId: 'SheetList',
@@ -190,8 +168,38 @@ export class EngineInterface {
 			},
 		};
 
-		const sheetList = await app.createSessionObject(sheetListProps);
-		const sheetListLayout = await sheetList.getLayout();
+		// Create all session objects in parallel
+		const [measurelist, dimensionList, sheetList] = await Promise.all([
+			app.createSessionObject(measureListProps),
+			app.createSessionObject(dimensionListProps),
+			app.createSessionObject(sheetListProps)
+		]);
+
+		// Get all layouts in parallel
+		const [measures, dimensions, sheetListLayout] = await Promise.all([
+			measurelist.getLayout(),
+			dimensionList.getLayout(),
+			sheetList.getLayout()
+		]);
+
+		// Fetch all master measures and dimensions in parallel
+		const [masterMeasures, masterDimensions] = await Promise.all([
+			Promise.all(
+				measures.qMeasureList.qItems.map(async (item: any) => {
+					const measure = await app.getMeasure(item.qInfo.qId);
+					const props = await measure.getProperties();
+					return props;
+				})
+			),
+			Promise.all(
+				dimensions.qDimensionList.qItems.map(async (item: any) => {
+					const dimension = await app.getDimension(item.qInfo.qId);
+					const props = await dimension.getProperties();
+					return props;
+				})
+			)
+		]);
+
 		const sheets: any[] = [];
 		const sheetDimensions: any[] = [];
 		const sheetMeasures: any[] = [];
