@@ -67,12 +67,12 @@
 			<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
 				<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
 					<tr>
-						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
-						<th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Labels</th>
-						<th class="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
+						<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
+						<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Labels</th>
+						<th class="w-[35%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
 						<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">App</th>
 					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
-					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+					<th class="w-[8%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
 					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart Title</th>
 					</tr>
 				</thead>
@@ -106,13 +106,13 @@
 								{/if}
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								<div class="flex items-center gap-2 group">
-									<div class="flex-1 truncate" title={definition}>{definition}</div>
+								<div class="flex items-start gap-2 group">
+									<div class="flex-1 break-words whitespace-normal min-w-0" title={definition}>{definition}</div>
 									{#if definition !== 'N/A'}
 										<button
 											type="button"
 											onclick={() => onCopyToClipboard(definition, `${result.path}-${result.app}`)}
-											class="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+											class="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors mt-0.5"
 											title="Copy definition to clipboard"
 										>
 											{#if copiedDefinitionId === `${result.path}-${result.app}`}

@@ -202,87 +202,231 @@ export class EngineInterface {
 				const sheetProps = await sheet.getFullPropertyTree();
 				const sheetLayout = await sheet.getLayout();
 				const sheetId = sheetProps.qProperty.qInfo.qId;
+				const sheetTitle = sheetProps.qProperty.qMetaDef.title;
 				sheetProps.published = !!sheetLayout?.qMeta?.published;
 				// Ensure tenantUrl doesn't already have https://
 				const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
 				const sheetUrl = `https://${cleanTenantUrl}/sense/app/${appId}/sheet/${sheetId}`;
 				const sheetInfo = {
 					sheetId,
-					sheetTitle: sheetProps.qProperty.qMetaDef.title,
+					sheetTitle,
 					sheetUrl,
 				};
 				sheetProps.sheetUrl = sheetUrl;
 
 				sheets.push(sheetProps);
 
-				// Find all charts with qInfo and qHyperCubeDef
-				function findCharts(obj: any, path = ''): void {
+				// Debug: Log sheet info for the specific app mentioned
+				if (appId.includes('Nutra_Green_Sales_BAStart') || sheetTitle?.includes('Nutra')) {
+					console.log(`[DEBUG] Processing sheet: ${sheetTitle} (${sheetId})`);
+					console.log(`[DEBUG] Sheet published: ${sheetProps.published}`);
+					console.log(`[DEBUG] Sheet props keys:`, Object.keys(sheetProps));
+				}
+
+				// Find all objects with qInfo (charts, listboxes, filter panes, etc.)
+				function findObjects(obj: any, path = ''): void {
 					if (obj === null || obj === undefined) return;
 
 					if (typeof obj === 'object') {
-						if (obj.qInfo && obj.qHyperCubeDef) {
+						// Check if this is an object with qInfo (any Qlik object)
+						if (obj.qInfo) {
 							const chartId = obj.qInfo.qId;
 							const chartUrl = `${sheetUrl}/chartId/${chartId}`;
-							obj.chartUrl = chartUrl;
 							const chartInfo = {
 								chartId,
 								chartType: obj.qInfo.qType,
-								chartTitle: obj.title,
+								chartTitle: obj.title || obj.qMeta?.title || null,
 								chartUrl,
 							};
 
-							// Extract measures
-							if (obj.qHyperCubeDef.qMeasures && Array.isArray(obj.qHyperCubeDef.qMeasures)) {
-								obj.qHyperCubeDef.qMeasures.forEach((m: any) => {
-									if (m.qLibraryId) {
-										sheetMeasures.push({
-											...sheetInfo,
-											...chartInfo,
-											qLibraryId: m.qLibraryId,
-										});
-									} else {
-										sheetMeasures.push({
-											...sheetInfo,
-											...chartInfo,
-											...m,
-										});
-									}
-								});
+							// Extract from qHyperCubeDef (standard charts)
+							if (obj.qHyperCubeDef) {
+								// Extract measures
+								if (obj.qHyperCubeDef.qMeasures && Array.isArray(obj.qHyperCubeDef.qMeasures)) {
+									obj.qHyperCubeDef.qMeasures.forEach((m: any) => {
+										if (m.qLibraryId) {
+											sheetMeasures.push({
+												...sheetInfo,
+												...chartInfo,
+												qLibraryId: m.qLibraryId,
+											});
+										} else {
+											sheetMeasures.push({
+												...sheetInfo,
+												...chartInfo,
+												...m,
+											});
+										}
+									});
+								}
+
+								// Extract dimensions
+								if (obj.qHyperCubeDef.qDimensions && Array.isArray(obj.qHyperCubeDef.qDimensions)) {
+									obj.qHyperCubeDef.qDimensions.forEach((dim: any) => {
+										if (dim.qLibraryId) {
+											sheetDimensions.push({
+												...sheetInfo,
+												...chartInfo,
+												qLibraryId: dim.qLibraryId,
+											});
+										} else {
+											sheetDimensions.push({
+												...sheetInfo,
+												...chartInfo,
+												...dim,
+											});
+										}
+									});
+								}
 							}
 
-							// Extract dimensions
-							if (obj.qHyperCubeDef.qDimensions && Array.isArray(obj.qHyperCubeDef.qDimensions)) {
-								obj.qHyperCubeDef.qDimensions.forEach((dim: any) => {
-									if (dim.qLibraryId) {
+							// Extract from qListObjectDef (listboxes, filter panes)
+							if (obj.qListObjectDef) {
+								if (obj.qListObjectDef.qDef) {
+									// Single dimension in listbox
+									if (obj.qListObjectDef.qDef.qLibraryId) {
 										sheetDimensions.push({
 											...sheetInfo,
 											...chartInfo,
-											qLibraryId: dim.qLibraryId,
+											qLibraryId: obj.qListObjectDef.qDef.qLibraryId,
 										});
-									} else {
+									} else if (obj.qListObjectDef.qDef.qFieldDefs || obj.qListObjectDef.qDef.qFieldLabels) {
 										sheetDimensions.push({
 											...sheetInfo,
 											...chartInfo,
-											...dim,
+											qDef: obj.qListObjectDef.qDef.qFieldDefs || obj.qListObjectDef.qDef.qFieldLabels,
+											qFieldDefs: obj.qListObjectDef.qDef.qFieldDefs,
+											qFieldLabels: obj.qListObjectDef.qDef.qFieldLabels,
 										});
 									}
-								});
+								}
+							}
+
+							// Extract from qDef directly (some object types)
+							if (obj.qDef && !obj.qHyperCubeDef && !obj.qListObjectDef) {
+								if (obj.qDef.qLibraryId) {
+									// Could be a dimension or measure reference
+									sheetDimensions.push({
+										...sheetInfo,
+										...chartInfo,
+										qLibraryId: obj.qDef.qLibraryId,
+									});
+								} else if (typeof obj.qDef === 'string' || obj.qDef.qFieldDefs || obj.qDef.qFieldLabels) {
+									sheetDimensions.push({
+										...sheetInfo,
+										...chartInfo,
+										qDef: typeof obj.qDef === 'string' ? obj.qDef : (obj.qDef.qFieldDefs || obj.qDef.qFieldLabels),
+										qFieldDefs: obj.qDef.qFieldDefs,
+										qFieldLabels: obj.qDef.qFieldLabels,
+									});
+								}
+							}
+
+							// Extract from qMeasureListDef (measure objects)
+							if (obj.qMeasureListDef) {
+								if (obj.qMeasureListDef.qItems && Array.isArray(obj.qMeasureListDef.qItems)) {
+									obj.qMeasureListDef.qItems.forEach((m: any) => {
+										if (m.qLibraryId) {
+											sheetMeasures.push({
+												...sheetInfo,
+												...chartInfo,
+												qLibraryId: m.qLibraryId,
+											});
+										} else {
+											sheetMeasures.push({
+												...sheetInfo,
+												...chartInfo,
+												...m,
+											});
+										}
+									});
+								}
+							}
+
+							// Extract from qDimensionListDef (dimension objects)
+							if (obj.qDimensionListDef) {
+								if (obj.qDimensionListDef.qItems && Array.isArray(obj.qDimensionListDef.qItems)) {
+									obj.qDimensionListDef.qItems.forEach((dim: any) => {
+										if (dim.qLibraryId) {
+											sheetDimensions.push({
+												...sheetInfo,
+												...chartInfo,
+												qLibraryId: dim.qLibraryId,
+											});
+										} else {
+											sheetDimensions.push({
+												...sheetInfo,
+												...chartInfo,
+												...dim,
+											});
+										}
+									});
+								}
 							}
 						}
 
 						if (Array.isArray(obj)) {
-							obj.forEach((item, index) => findCharts(item, `${path}[${index}]`));
+							obj.forEach((item, index) => findObjects(item, `${path}[${index}]`));
 						} else {
 							Object.keys(obj).forEach((key) => {
-								findCharts(obj[key], path ? `${path}.${key}` : key);
+								findObjects(obj[key], path ? `${path}.${key}` : key);
 							});
 						}
 					}
 				}
 
-				findCharts(sheetProps);
+				// First, try to find objects in the full property tree
+				findObjects(sheetProps);
+
+				// Also check the cells structure which contains the actual visualizations
+				if (sheetProps.qProperty?.cells) {
+					findObjects(sheetProps.qProperty.cells);
+				}
+
+				// Check children if they exist
+				if (sheetProps.qProperty?.children) {
+					findObjects(sheetProps.qProperty.children);
+				}
+
+				// Also iterate through cells and get each object's layout for more complete data
+				if (sheetLayout?.qLayout?.cells && Array.isArray(sheetLayout.qLayout.cells)) {
+					await Promise.all(
+						sheetLayout.qLayout.cells.map(async (cell: any) => {
+							if (cell.name && cell.name !== '') {
+								try {
+									const cellObject = await app.getObject(cell.name);
+									const cellLayout = await cellObject.getLayout();
+									findObjects(cellLayout);
+								} catch (err) {
+									// Some objects might not be accessible, skip them
+									console.warn(`[DEBUG] Could not get layout for object ${cell.name}:`, err);
+								}
+							}
+						})
+					);
+				}
+
+				// Debug: Log extraction results for the specific app
+				if (appId.includes('Nutra_Green_Sales_BAStart') || sheetTitle?.includes('Nutra')) {
+					console.log(`[DEBUG] Sheet ${sheetTitle} - Found ${sheetDimensions.length} dimensions, ${sheetMeasures.length} measures`);
+					if (sheetDimensions.length === 0 && sheetMeasures.length === 0) {
+						console.warn(`[DEBUG] No dimensions/measures found in sheet ${sheetTitle}. Sheet structure:`, {
+							hasQProperty: !!sheetProps.qProperty,
+							hasCells: !!sheetProps.qProperty?.cells,
+							hasChildren: !!sheetProps.qProperty?.children,
+							keys: Object.keys(sheetProps.qProperty || {})
+						});
+						// Try to get the layout to see what's actually on the sheet
+						console.log(`[DEBUG] Sheet layout:`, sheetLayout);
+					}
+				}
 			})
 		);
+
+		// Debug: Log total extraction results
+		if (appId.includes('Nutra_Green_Sales_BAStart')) {
+			console.log(`[DEBUG] App ${appId} - Total: ${sheetDimensions.length} sheet dimensions, ${sheetMeasures.length} sheet measures`);
+		}
 
 		return {
 			appLayout,
