@@ -15,11 +15,13 @@
 		"lint": "prettier --check .",
 		"test:e2e": "playwright test",
 		"test": "npm run test:e2e",
-		"deploy": "npx gh-pages -d build"
+		"deploy": "npx gh-pages -d build",
+		"start": "node build"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.56.1",
 		"@sveltejs/adapter-auto": "^7.0.0",
+		"@sveltejs/adapter-node": "^5.4.0",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.47.1",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
