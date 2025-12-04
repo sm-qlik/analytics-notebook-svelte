@@ -1,7 +1,10 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
-const dev = process.argv.includes('dev');
+// Determine if we're in development mode
+// Only use empty base path when explicitly running dev server (npm run dev)
+// During build (npm run build), always use the base path for GitHub Pages
+const isDevServer = process.argv.includes('dev');
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -17,7 +20,7 @@ const config = {
 			strict: true
 		}),
 		paths: {
-			base: dev ? '' : '/analytics-notebook-svelte', // Replace 'your-repo-name' with your repository name
+			base: isDevServer ? '' : '/analytics-notebook-svelte', // Use base path for production builds (GitHub Pages)
 		}
 	}
 };

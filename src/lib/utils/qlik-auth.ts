@@ -94,22 +94,25 @@ export function parseTenantUrl(tenantUrl: string): TenantInfo {
  * Get OAuth redirect URI (from env or default)
  */
 export function getOAuthRedirectUri(): string {
-
-    console.log('window type', typeof window); 
-	
 	if (typeof window !== 'undefined') {
 		// Check for environment variable injected at build time
 		const envRedirectUri = (window as any).ENV?.OAUTH_REDIRECT_URI;
 		if (envRedirectUri) {
-			
-			console.log('environment redirect', envRedirectUri); 
 			return envRedirectUri;
 		}
 
-		// Default to current origin + /oauth-callback
-		return `${window.location.origin}/oauth-callback`;
-
-
+		// Detect base path from current URL
+		// For GitHub Pages, the base path is /analytics-notebook-svelte
+		let basePath = '';
+		const pathname = window.location.pathname;
+		
+		// Check if pathname starts with the base path
+		if (pathname.startsWith('/analytics-notebook-svelte')) {
+			basePath = '/analytics-notebook-svelte';
+		}
+		
+		// Construct redirect URI with base path
+		return `${window.location.origin}${basePath}/oauth-callback`;
 	}
 	
 	return '/oauth-callback';
