@@ -19,6 +19,23 @@
 			} catch (e) {
 				console.warn('Failed to load tenant history:', e);
 			}
+
+			// Check for tenant query parameter
+			const urlParams = new URLSearchParams(window.location.search);
+			const tenantParam = urlParams.get('tenant');
+			
+			if (tenantParam) {
+				// Set the tenant URL from query parameter
+				tenantUrl = tenantParam.trim();
+				
+				// Remove the tenant parameter from URL without reloading
+				urlParams.delete('tenant');
+				const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+				window.history.replaceState({}, '', newUrl);
+				
+				// Automatically trigger login
+				handleLogin();
+			}
 		}
 	});
 	
