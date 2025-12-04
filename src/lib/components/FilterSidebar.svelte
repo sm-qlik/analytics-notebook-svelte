@@ -8,6 +8,7 @@
 		selectedApps: Set<string>;
 		selectedSheets: Set<string>;
 		selectedTypes: Set<string>;
+		tenantHostname: string;
 		onToggleSpace: (spaceId: string) => void;
 		onToggleApp: (appName: string) => void;
 		onToggleSheet: (sheetName: string) => void;
@@ -31,6 +32,7 @@
 		selectedApps,
 		selectedSheets,
 		selectedTypes,
+		tenantHostname,
 		onToggleSpace,
 		onToggleApp,
 		onToggleSheet,
@@ -170,7 +172,7 @@
 			</div>
 			{#if appsExpanded}
 				<div class="space-y-2">
-					{#each apps as app, index (app.name || `app-${index}`)}
+					{#each apps as app (`${tenantHostname}-${app.id}`)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 							<input
 								type="checkbox"

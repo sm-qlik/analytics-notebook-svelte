@@ -56,6 +56,7 @@
 	let spaces = $state<Array<{ name: string; id: string }>>([]);
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string }>>([]);
 	let loadingAppIds = $state<Set<string>>(new Set());
+	let currentTenantHostname = $state('');
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
 		return new Set(oldSet);
@@ -953,6 +954,18 @@
 	
 	onMount(() => {
 		const unsubscribe = authStore.subscribe(state => {
+			// Extract hostname from tenant URL for keying purposes
+			if (state.tenantUrl) {
+				try {
+					const url = new URL(state.tenantUrl);
+					currentTenantHostname = url.hostname;
+				} catch {
+					currentTenantHostname = state.tenantUrl;
+				}
+			} else {
+				currentTenantHostname = '';
+			}
+			
 			if (state.isAuthenticated && appItems.length === 0 && !isLoadingApps) {
 				loadAppList();
 			}
@@ -1270,6 +1283,7 @@
 		{selectedApps}
 		{selectedSheets}
 		{selectedTypes}
+		tenantHostname={currentTenantHostname}
 		onToggleSpace={toggleSpace}
 		onToggleApp={toggleApp}
 		onToggleSheet={toggleSheet}
