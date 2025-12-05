@@ -74,15 +74,21 @@
 		return sheet ? sheet.name : null;
 	}
 
-	const availableSheets = $derived(
-		Array.from(
-			new Set(
-				sheets
-					.filter((sheet) => selectedApps.has(sheet.appId))
-					.map((sheet) => sheet.name)
-			)
-		).sort()
-	);
+	const availableSheets = $derived.by(() => {
+		const seen = new Set<string>();
+		const hasAppSelection = selectedApps.size > 0;
+		return sheets
+			.filter((sheet) => loadedAppIds.has(sheet.appId))
+			.filter((sheet) => !hasAppSelection || selectedApps.has(sheet.appId))
+			.filter((sheet) => {
+				// Deduplicate by sheetId only (ignore appId for display purposes)
+				if (seen.has(sheet.sheetId)) return false;
+				seen.add(sheet.sheetId);
+				return true;
+			})
+			.map((sheet) => ({ name: sheet.name, id: sheet.sheetId, appId: sheet.appId }))
+			.sort((a, b) => a.name.localeCompare(b.name));
+	});
 	
 	const availableSpaces = $derived(
 		[...spaces].sort((a, b) => a.name.localeCompare(b.name))
@@ -101,10 +107,6 @@
 	let selectedApps = $state(new Set<string>());
 	let selectedSheets = $state(new Set<string>());
 	let selectedTypes = $state(new Set<string>());
-	
-	const availableTypes = $derived(
-		Array.from(new Set(unfilteredResults.map((r) => r.objectType).filter((t): t is string => Boolean(t)))).sort()
-	);
 	
 	// Track which apps have been loaded (have data)
 	const loadedAppIds = $derived(new Set(qlikApps.map(a => a.id)));
@@ -131,6 +133,10 @@
 
 	let searchableIndex: SearchableItem[] = $state([]);
 	let fuseInstance: Fuse<SearchableItem> | null = $state(null);
+	
+	const availableTypes = $derived(
+		Array.from(new Set(searchableIndex.map((r) => r.objectType).filter((t): t is string => Boolean(t)))).sort()
+	);
 
 	function extractSearchableFields(obj: any): string {
 		if (obj === null || obj === undefined) return '';
@@ -1044,10 +1050,10 @@
 			}
 
 			if (hasSheetFilters) {
-				if (!sheetName || sheetName === 'N/A') {
+				if (!item.sheetId) {
 					continue;
 				}
-				if (!selectedSheets.has(sheetName)) {
+				if (!selectedSheets.has(item.sheetId)) {
 					continue;
 				}
 			}
@@ -1125,7 +1131,7 @@
 		if (appsLoaded > 0) {
 			isSearching = true;
 			searchEffectTimeout = setTimeout(() => {
-				performSearch(shouldIncremental);
+				performSearch(false);
 			}, 200);
 		}
 		
@@ -1233,7 +1239,7 @@
 	}
 
 	function selectAllSheets() {
-		selectedSheets = new Set(availableSheets);
+		selectedSheets = new Set(availableSheets.map(s => s.id));
 	}
 
 	function deselectAllSheets() {
@@ -1318,26 +1324,21 @@
 		spaces={availableSpaces}
 		apps={availableApps}
 		{availableSheets}
-		{availableTypes}
 		selectedSpaces={selectedSpaces}
 		{selectedApps}
 		{selectedSheets}
-		{selectedTypes}
 		{loadedAppIds}
 		{loadingAppIds}
 		tenantHostname={currentTenantHostname}
 		onToggleSpace={toggleSpace}
 		onToggleApp={toggleApp}
 		onToggleSheet={toggleSheet}
-		onToggleType={toggleType}
 		onSelectAllSpaces={selectAllSpaces}
 		onDeselectAllSpaces={deselectAllSpaces}
 		onSelectAllApps={selectAllApps}
 		onDeselectAllApps={deselectAllApps}
 		onSelectAllSheets={selectAllSheets}
 		onDeselectAllSheets={deselectAllSheets}
-		onSelectAllTypes={selectAllTypes}
-		onDeselectAllTypes={deselectAllTypes}
 	/>
 
 	<div class="flex-1 flex flex-col min-h-0 min-w-0">
@@ -1382,6 +1383,63 @@
 				{isSearching}
 				onInput={handleSearchInput}
 			/>
+
+			<!-- Type Filter Chips -->
+			{#if availableTypes.length > 0}
+				<div class="flex items-center gap-3 mt-3 mb-2">
+					<div class="flex flex-wrap gap-2">
+						{#each availableTypes as typeName (typeName)}
+							{@const isSelected = selectedTypes.has(typeName)}
+							{@const colors = typeName === 'Master Measure' 
+								? { selected: 'bg-blue-500 text-white border-blue-500', unselected: 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700', check: 'text-white', box: 'bg-blue-200 dark:bg-blue-800/50' }
+								: typeName === 'Master Dimension'
+								? { selected: 'bg-purple-500 text-white border-purple-500', unselected: 'bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700', check: 'text-white', box: 'bg-purple-200 dark:bg-purple-800/50' }
+								: typeName === 'Sheet Measure'
+								? { selected: 'bg-emerald-500 text-white border-emerald-500', unselected: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700', check: 'text-white', box: 'bg-emerald-200 dark:bg-emerald-800/50' }
+								: typeName === 'Sheet Dimension'
+								? { selected: 'bg-amber-500 text-white border-amber-500', unselected: 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700', check: 'text-white', box: 'bg-amber-200 dark:bg-amber-800/50' }
+								: { selected: 'bg-gray-500 text-white border-gray-500', unselected: 'bg-gray-50 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600', check: 'text-white', box: 'bg-gray-300 dark:bg-gray-600' }
+							}
+							<button
+								type="button"
+								onclick={() => toggleType(typeName)}
+								class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border transition-all duration-150 {isSelected ? colors.selected : colors.unselected} hover:opacity-80"
+							>
+								<span class="w-3.5 h-3.5 flex items-center justify-center rounded-sm {isSelected ? '' : colors.box}">
+									{#if isSelected}
+										<svg 
+											class="w-3.5 h-3.5 {colors.check}" 
+											fill="none" 
+											stroke="currentColor" 
+											viewBox="0 0 24 24"
+										>
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+										</svg>
+									{/if}
+								</span>
+								{typeName}
+							</button>
+						{/each}
+					</div>
+					<div class="flex gap-1 text-xs ml-auto">
+						<button
+							type="button"
+							onclick={selectAllTypes}
+							class="text-indigo-600 dark:text-indigo-400 hover:underline"
+						>
+							All
+						</button>
+						<span class="text-gray-400">|</span>
+						<button
+							type="button"
+							onclick={deselectAllTypes}
+							class="text-indigo-600 dark:text-indigo-400 hover:underline"
+						>
+							None
+						</button>
+					</div>
+				</div>
+			{/if}
 		
 			{#if isSearching && searchResults.length === 0}
 				<div class="flex flex-col flex-1 min-h-0 items-center justify-center">
