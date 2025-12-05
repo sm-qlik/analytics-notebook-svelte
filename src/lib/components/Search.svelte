@@ -173,8 +173,8 @@
 		return searchableFields.join(' ');
 	}
 
-	function extractLabels(obj: any, parentObj: any = null, context: any = null): string[] {
-		if (obj === null && parentObj === null && context === null) return [];
+	function extractLabels(obj: any, parentObj: any = null, context: any = null, qDefString: string | null = null): string[] {
+		if (obj === null && parentObj === null && context === null && qDefString === null) return [];
 		
 		const labels: string[] = [];
 		
@@ -198,10 +198,29 @@
 				qFieldLabels.forEach((label: any) => {
 					if (typeof label === 'string' && label.trim()) {
 						extracted.push(label.trim());
+					} else if (typeof label === 'object' && label !== null) {
+						// Handle object labels - extract string value
+						if (label.qv && typeof label.qv === 'string') {
+							extracted.push(label.qv.trim());
+						} else if (label.qDef && typeof label.qDef === 'string') {
+							extracted.push(label.qDef.trim());
+						} else {
+							const str = String(label).trim();
+							if (str && str !== '[object Object]') {
+								extracted.push(str);
+							}
+						}
 					}
 				});
 			} else if (typeof qFieldLabels === 'string' && qFieldLabels.trim()) {
 				extracted.push(qFieldLabels.trim());
+			} else if (typeof qFieldLabels === 'object' && qFieldLabels !== null) {
+				// Handle single object label
+				if (qFieldLabels.qv && typeof qFieldLabels.qv === 'string') {
+					extracted.push(qFieldLabels.qv.trim());
+				} else if (qFieldLabels.qDef && typeof qFieldLabels.qDef === 'string') {
+					extracted.push(qFieldLabels.qDef.trim());
+				}
 			}
 			return extracted;
 		}
@@ -211,6 +230,8 @@
 			// Extract qLabel
 			if (obj.qLabel && typeof obj.qLabel === 'string' && obj.qLabel.trim()) {
 				labels.push(obj.qLabel.trim());
+			} else if (obj.qLabel && typeof obj.qLabel === 'object' && obj.qLabel.qv && typeof obj.qLabel.qv === 'string') {
+				labels.push(obj.qLabel.qv.trim());
 			}
 			// Extract qTitle
 			const qTitle = extractQTitle(obj.qTitle);
@@ -227,8 +248,12 @@
 		// If obj is a qDef string or we need to check parentObj, look there
 		if (parentObj && typeof parentObj === 'object') {
 			// Check if parentObj has qDim with qLabel (for master dimension references)
-			if (parentObj.qDim?.qLabel && typeof parentObj.qDim.qLabel === 'string' && parentObj.qDim.qLabel.trim()) {
-				labels.push(parentObj.qDim.qLabel.trim());
+			if (parentObj.qDim?.qLabel) {
+				if (typeof parentObj.qDim.qLabel === 'string' && parentObj.qDim.qLabel.trim()) {
+					labels.push(parentObj.qDim.qLabel.trim());
+				} else if (typeof parentObj.qDim.qLabel === 'object' && parentObj.qDim.qLabel.qv && typeof parentObj.qDim.qLabel.qv === 'string') {
+					labels.push(parentObj.qDim.qLabel.qv.trim());
+				}
 			}
 			const qDimTitle = extractQTitle(parentObj.qDim?.qTitle);
 			if (qDimTitle) {
@@ -238,8 +263,12 @@
 			const qDimFieldLabels = extractQFieldLabels(parentObj.qDim?.qFieldLabels);
 			labels.push(...qDimFieldLabels);
 			// Check if parentObj has qMeasure with qLabel (for master measure references)
-			if (parentObj.qMeasure?.qLabel && typeof parentObj.qMeasure.qLabel === 'string' && parentObj.qMeasure.qLabel.trim()) {
-				labels.push(parentObj.qMeasure.qLabel.trim());
+			if (parentObj.qMeasure?.qLabel) {
+				if (typeof parentObj.qMeasure.qLabel === 'string' && parentObj.qMeasure.qLabel.trim()) {
+					labels.push(parentObj.qMeasure.qLabel.trim());
+				} else if (typeof parentObj.qMeasure.qLabel === 'object' && parentObj.qMeasure.qLabel.qv && typeof parentObj.qMeasure.qLabel.qv === 'string') {
+					labels.push(parentObj.qMeasure.qLabel.qv.trim());
+				}
 			}
 			const qMeasureTitle = extractQTitle(parentObj.qMeasure?.qTitle);
 			if (qMeasureTitle) {
@@ -249,8 +278,12 @@
 			const qMeasureFieldLabels = extractQFieldLabels(parentObj.qMeasure?.qFieldLabels);
 			labels.push(...qMeasureFieldLabels);
 			// Check parentObj directly for qLabel and qTitle
-			if (parentObj.qLabel && typeof parentObj.qLabel === 'string' && parentObj.qLabel.trim()) {
-				labels.push(parentObj.qLabel.trim());
+			if (parentObj.qLabel) {
+				if (typeof parentObj.qLabel === 'string' && parentObj.qLabel.trim()) {
+					labels.push(parentObj.qLabel.trim());
+				} else if (typeof parentObj.qLabel === 'object' && parentObj.qLabel.qv && typeof parentObj.qLabel.qv === 'string') {
+					labels.push(parentObj.qLabel.qv.trim());
+				}
 			}
 			const parentQTitle = extractQTitle(parentObj.qTitle);
 			if (parentQTitle) {
@@ -264,8 +297,92 @@
 		// Note: chartTitle and sheetName/sheetTitle are excluded from labels
 		// since they have their own dedicated columns in the table
 		
+		// Helper function to get qDef value as string (for comparison)
+		function getQDefString(obj: any): string | null {
+			if (!obj) return null;
+			if (typeof obj === 'string') return obj.trim();
+			if (typeof obj === 'object' && obj !== null) {
+				if (obj.qDef) {
+					if (typeof obj.qDef === 'string') return obj.qDef.trim();
+					if (typeof obj.qDef === 'object' && obj.qDef.qv) return String(obj.qDef.qv).trim();
+					if (typeof obj.qDef === 'object' && obj.qDef.qDef) return String(obj.qDef.qDef).trim();
+				}
+				if (obj.qv) return String(obj.qv).trim();
+			}
+			return null;
+		}
+		
+		// Collect all qDef values to filter against
+		const qDefValues = new Set<string>();
+		// If qDefString was passed explicitly (when obj is a string qDef), use it
+		if (qDefString) {
+			qDefValues.add(qDefString.trim());
+		}
+		// Also check obj if it's a string (the qDef itself)
+		if (typeof obj === 'string') {
+			qDefValues.add(obj.trim());
+		} else if (obj) {
+			const objQDef = getQDefString(obj);
+			if (objQDef) qDefValues.add(objQDef);
+		}
+		if (parentObj) {
+			const parentQDef = getQDefString(parentObj);
+			if (parentQDef) qDefValues.add(parentQDef);
+			if (parentObj.qDim) {
+				const qDimQDef = getQDefString(parentObj.qDim);
+				if (qDimQDef) qDefValues.add(qDimQDef);
+			}
+			if (parentObj.qMeasure) {
+				const qMeasureQDef = getQDefString(parentObj.qMeasure);
+				if (qMeasureQDef) qDefValues.add(qMeasureQDef);
+			}
+		}
+		
+		// Filter labels: remove duplicates, ensure strings, exclude definitions
+		const filteredLabels = labels
+			.map((label: any) => {
+				// Ensure label is a string
+				if (typeof label !== 'string') {
+					// Try to extract string from object
+					if (typeof label === 'object' && label !== null) {
+						if (label.qv && typeof label.qv === 'string') return label.qv.trim();
+						if (label.qDef && typeof label.qDef === 'string') return label.qDef.trim();
+						const str = String(label).trim();
+						// Don't include [object Object]
+						if (str === '[object Object]') return '';
+						return str;
+					}
+					const str = String(label).trim();
+					if (str === '[object Object]') return '';
+					return str;
+				}
+				return label.trim();
+			})
+			.filter(label => {
+				// Exclude empty labels
+				if (!label) return false;
+				
+				// Exclude any label that looks like a Qlik expression (starts with =)
+				if (label.startsWith('=')) return false;
+				
+				// Exclude any label that matches a qDef value (exact match or after removing =)
+				if (qDefValues.has(label)) return false;
+				// Also check if label matches qDef without the leading =
+				const labelWithoutEquals = label.startsWith('=') ? label.substring(1).trim() : label;
+				if (qDefValues.has(labelWithoutEquals)) return false;
+				// Check if any qDef value matches the label (with or without =)
+				for (const qDef of qDefValues) {
+					const qDefWithoutEquals = qDef.startsWith('=') ? qDef.substring(1).trim() : qDef;
+					if (label === qDef || label === qDefWithoutEquals || labelWithoutEquals === qDef || labelWithoutEquals === qDefWithoutEquals) {
+						return false;
+					}
+				}
+				
+				return true;
+			});
+		
 		// Remove duplicates and return
-		return [...new Set(labels)];
+		return [...new Set(filteredLabels)];
 	}
 
 	function buildSearchableIndex() {
@@ -386,9 +503,10 @@
 				if (!processedObjects.has(objectKey)) {
 					processedObjects.set(objectKey, true);
 					// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
+					// Pass the qDef string explicitly so it can be filtered out from labels
 					const labels = shouldProcessAsString 
-						? extractLabels(null, parentObj, newContext)
-						: extractLabels(obj, parentObj, newContext);
+						? extractLabels(null, parentObj, newContext, obj)
+						: extractLabels(obj, parentObj, newContext, null);
 					
 					let searchableText = extractSearchableFields(obj);
 					// Add labels to searchable text so they can be searched
@@ -419,9 +537,68 @@
 					} else if (typeof obj === 'object' && obj !== null && obj.qInfo?.qId) {
 						chartId = obj.qInfo.qId;
 					}
+					// Helper function to safely extract string from qDef value
+					function safeExtractQDefString(value: any): string | null {
+						if (value === null || value === undefined) return null;
+						if (typeof value === 'string' && value.trim()) return value.trim();
+						if (typeof value === 'object') {
+							// Try common Qlik object properties
+							if (value.qv && typeof value.qv === 'string' && value.qv.trim()) return value.qv.trim();
+							if (value.qDef && typeof value.qDef === 'string' && value.qDef.trim()) return value.qDef.trim();
+							if (value.qDef && typeof value.qDef === 'object' && value.qDef.qv && typeof value.qDef.qv === 'string') {
+								return value.qDef.qv.trim();
+							}
+							// Avoid [object Object] - return null if we can't extract a meaningful string
+							return null;
+						}
+						// For numbers, booleans, etc., convert to string
+						const str = String(value).trim();
+						return str || null;
+					}
+					
+					// Ensure qDef is accessible in the stored object
+					let objectToStore = obj;
+					if (typeof obj === 'string') {
+						// String qDef - wrap it
+						objectToStore = { qDef: obj };
+					} else if (typeof obj === 'object' && obj !== null) {
+						// Object qDim/qMeasure - ensure qDef is accessible
+						if (!obj.qDef) {
+							// Try to get qDef from parentObj
+							let qDefStr: string | null = null;
+							if (parentObj?.qDef) {
+								qDefStr = safeExtractQDefString(parentObj.qDef);
+							} else if (parentObj?.qDim?.qDef) {
+								qDefStr = safeExtractQDefString(parentObj.qDim.qDef);
+							} else if (parentObj?.qMeasure?.qDef) {
+								qDefStr = safeExtractQDefString(parentObj.qMeasure.qDef);
+							}
+							// For qDim objects, check qGrouping as fallback
+							if (!qDefStr && obj.qGrouping) {
+								qDefStr = safeExtractQDefString(obj.qGrouping);
+							}
+							// For qMeasure objects, check qLabelExpression as fallback
+							if (!qDefStr && obj.qLabelExpression) {
+								qDefStr = safeExtractQDefString(obj.qLabelExpression);
+							}
+							if (qDefStr) {
+								objectToStore = { ...obj, qDef: qDefStr };
+							}
+						} else {
+							// obj.qDef exists - ensure it's a string
+							const qDefStr = safeExtractQDefString(obj.qDef);
+							if (qDefStr) {
+								objectToStore = { ...obj, qDef: qDefStr };
+							} else {
+								// If we can't extract a string, set to null to avoid [object Object]
+								objectToStore = { ...obj, qDef: null };
+							}
+						}
+					}
+					
 					index.push({
 						path: path,
-						object: obj,
+						object: objectToStore,
 						objectType: newContext.objectType,
 						context: newContext,
 						file: appId,

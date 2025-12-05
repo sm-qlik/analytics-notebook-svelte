@@ -86,8 +86,76 @@
 				<tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
 					{#each results as result}
 					{@const obj = result.object}
-					{@const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || 'N/A'}
-					{@const definition = typeof obj === 'string' ? obj : (obj?.qDef || 'N/A')}
+					{@const title = (() => {
+						if (!obj) return 'N/A';
+						// Try title
+						if (obj.title) {
+							if (typeof obj.title === 'string') return obj.title;
+							if (typeof obj.title === 'object' && obj.title.qv) return String(obj.title.qv);
+							return String(obj.title);
+						}
+						// Try qAlias
+						if (obj.qAlias) {
+							if (typeof obj.qAlias === 'string') return obj.qAlias;
+							if (typeof obj.qAlias === 'object' && obj.qAlias.qv) return String(obj.qAlias.qv);
+							return String(obj.qAlias);
+						}
+						// Try first qFieldLabel
+						if (Array.isArray(obj.qFieldLabels) && obj.qFieldLabels.length > 0) {
+							const firstLabel = obj.qFieldLabels[0];
+							if (typeof firstLabel === 'string') return firstLabel;
+							if (typeof firstLabel === 'object' && firstLabel.qv) return String(firstLabel.qv);
+							if (typeof firstLabel === 'object' && firstLabel.qDef) return String(firstLabel.qDef);
+							return String(firstLabel);
+						}
+						return 'N/A';
+					})()}
+					{@const definition = (() => {
+						if (!obj) return 'N/A';
+						
+						// Helper to safely extract string from any value
+						function extractString(value: any): string | null {
+							if (value === null || value === undefined) return null;
+							if (typeof value === 'string') return value.trim() || null;
+							if (typeof value === 'object') {
+								// Try common Qlik object properties
+								if (value.qv && typeof value.qv === 'string') return value.qv.trim() || null;
+								if (value.qDef && typeof value.qDef === 'string') return value.qDef.trim() || null;
+								if (value.qDef && typeof value.qDef === 'object' && value.qDef.qv) {
+									return String(value.qDef.qv).trim() || null;
+								}
+								// If it's an array, try to stringify the first element
+								if (Array.isArray(value) && value.length > 0) {
+									return extractString(value[0]);
+								}
+								// Last resort: try to find any string property
+								for (const key in value) {
+									if (typeof value[key] === 'string' && value[key].trim()) {
+										return value[key].trim();
+									}
+								}
+								// Avoid [object Object] - return null instead
+								return null;
+							}
+							// For numbers, booleans, etc., convert to string
+							return String(value).trim() || null;
+						}
+						
+						// Handle qDef - can be string or object
+						if (obj.qDef !== undefined && obj.qDef !== null) {
+							const qDefStr = extractString(obj.qDef);
+							if (qDefStr) return qDefStr;
+						}
+						
+						// Fallback: try other properties that might contain the definition
+						const qGrouping = extractString(obj.qGrouping);
+						if (qGrouping) return qGrouping;
+						
+						const qLabelExpression = extractString(obj.qLabelExpression);
+						if (qLabelExpression) return qLabelExpression;
+						
+						return 'N/A';
+					})()}
 					{@const sheetName = result.sheet || result.sheetName || 'N/A'}
 					{@const sheetId = result.sheetId || result.context?.sheetId || null}
 					{@const sheetUrl = result.sheetUrl || result.context?.sheetUrl || null}
