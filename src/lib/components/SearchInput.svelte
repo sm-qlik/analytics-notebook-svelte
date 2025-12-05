@@ -6,7 +6,7 @@
 		placeholder?: string;
 	}
 
-	let { value, isSearching, onInput, placeholder = 'Search through data files...' }: Props = $props();
+	let { value, isSearching, onInput, placeholder = 'Search loaded app metadata...' }: Props = $props();
 
 	function handleInput(e: Event) {
 		const target = e.target as HTMLInputElement;

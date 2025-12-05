@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { loadQlikAPI, parseTenantUrl, createAuthConfig } from '$lib/utils/qlik-auth';
 	import { EngineInterface } from '$lib/utils/engine-interface';
@@ -19,6 +19,7 @@
 		context: any;
 		file?: string;
 		app?: string;
+		appId?: string;
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -35,6 +36,7 @@
 		context: any;
 		file?: string;
 		app?: string;
+		appId?: string;
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -57,6 +59,9 @@
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string }>>([]);
 	let loadingAppIds = $state<Set<string>>(new Set());
 	let currentTenantHostname = $state('');
+	let hasNewDataPending = $state(false);
+	let lastRefreshedAppsCount = $state(0);
+	let isAuthConfigured = $state(false);
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
 		return new Set(oldSet);
@@ -73,21 +78,23 @@
 		Array.from(
 			new Set(
 				sheets
-					.filter((sheet) => selectedApps.has(sheet.app))
+					.filter((sheet) => selectedApps.has(sheet.appId))
 					.map((sheet) => sheet.name)
 			)
 		).sort()
 	);
 	
 	const availableSpaces = $derived(
-		Array.from(new Set(spaces.map((s) => s.name))).sort()
+		[...spaces].sort((a, b) => a.name.localeCompare(b.name))
 	);
 	
 	const availableApps = $derived(
-		apps.filter((app) => {
-			if (selectedSpaces.size === 0) return true;
-			return app.spaceId && selectedSpaces.has(app.spaceId);
-		})
+		apps
+			.filter((app) => {
+				if (selectedSpaces.size === 0) return true;
+				return app.spaceId && selectedSpaces.has(app.spaceId);
+			})
+			.sort((a, b) => a.name.localeCompare(b.name))
 	);
 	
 	let selectedSpaces = $state(new Set<string>());
@@ -99,6 +106,9 @@
 		Array.from(new Set(unfilteredResults.map((r) => r.objectType).filter((t): t is string => Boolean(t)))).sort()
 	);
 	
+	// Track which apps have been loaded (have data)
+	const loadedAppIds = $derived(new Set(qlikApps.map(a => a.id)));
+	
 	type SearchableItem = {
 		path: string;
 		object: any;
@@ -106,6 +116,7 @@
 		context: any;
 		file: string;
 		app: string;
+		appId: string;
 		sheet: string | null;
 		sheetName: string | null;
 		sheetId: string | null;
@@ -370,52 +381,54 @@
 
 
 			if (shouldProcessAsObject || shouldProcessAsString) {
-				// Include app name in path to make it unique per app
-				const objectPath = `${appName}:${path}`;
-			if (processedObjects.has(objectPath)) {
-				return;
-			}
-				processedObjects.set(objectPath, true);
-				// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
-				const labels = shouldProcessAsString 
-					? extractLabels(null, parentObj, newContext)
-					: extractLabels(obj, parentObj, newContext);
-				
-				
-				let searchableText = extractSearchableFields(obj);
-				// Add labels to searchable text so they can be searched
-				if (labels.length > 0) {
-					searchableText += ' ' + labels.join(' ');
+				// Include appId in the key since object paths are only unique within an app.
+				// If the same path exists in different apps, using only the path as a key would cause
+				// collisions and incorrect deduplication, leading to data from one app overwriting or
+				// being confused with data from another. Namespacing with appId ensures correctness
+				// by keeping objects from different apps distinct, even if their paths are identical.
+				const objectKey = `${appId}:${path}`;
+				if (!processedObjects.has(objectKey)) {
+					processedObjects.set(objectKey, true);
+					// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
+					const labels = shouldProcessAsString 
+						? extractLabels(null, parentObj, newContext)
+						: extractLabels(obj, parentObj, newContext);
+					
+					let searchableText = extractSearchableFields(obj);
+					// Add labels to searchable text so they can be searched
+					if (labels.length > 0) {
+						searchableText += ' ' + labels.join(' ');
+					}
+					
+					// Extract title from object
+					const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || '';
+					
+					let chartId = null;
+					if (parentObj && typeof parentObj === 'object' && parentObj.qInfo?.qId) {
+						chartId = parentObj.qInfo.qId;
+					} else if (typeof obj === 'object' && obj !== null && obj.qInfo?.qId) {
+						chartId = obj.qInfo.qId;
+					}
+					index.push({
+						path: path,
+						object: obj,
+						objectType: newContext.objectType,
+						context: newContext,
+						file: appId,
+						app: appName,
+						appId: appId,
+						sheet: sheetName || null,
+						sheetName: sheetName || null,
+						sheetId: newContext.sheetId || null,
+						sheetUrl: newContext.sheetUrl || null,
+						chartId: chartId,
+						chartTitle: newContext.chartTitle || null,
+						chartUrl: newContext.chartUrl || null,
+						searchableText,
+						labels,
+						title
+					});
 				}
-				
-				// Extract title from object
-				const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || '';
-				
-				let chartId = null;
-				if (parentObj && typeof parentObj === 'object' && parentObj.qInfo?.qId) {
-					chartId = parentObj.qInfo.qId;
-				} else if (typeof obj === 'object' && obj !== null && obj.qInfo?.qId) {
-					chartId = obj.qInfo.qId;
-				}
-				
-				index.push({
-					path: objectPath,
-					object: obj,
-					objectType: newContext.objectType,
-					context: newContext,
-					file: appId,
-					app: appName,
-					sheet: sheetName || null,
-					sheetName: sheetName || null,
-					sheetId: newContext.sheetId || null,
-					sheetUrl: newContext.sheetUrl || null,
-					chartId: chartId,
-					chartTitle: newContext.chartTitle || null,
-					chartUrl: newContext.chartUrl || null,
-					searchableText,
-					labels,
-					title
-				});
 				return;
 			}
 
@@ -460,11 +473,11 @@
 				sheetMeasures: data.sheetMeasures || []
 			};
 			
-		appStructure.masterDimensions.forEach((dim: any, index: number) => {
-			if (dim.qDim) {
+			appStructure.masterDimensions.forEach((dim: any, idx: number) => {
+				if (dim.qDim) {
 					extractObjects(
 						dim.qDim,
-						`masterDimensions[${index}].qDim`,
+						`masterDimensions[${idx}].qDim`,
 						{ appName, appId, inMasterDimensions: true, inQdim: true },
 						appId,
 						appName,
@@ -473,11 +486,11 @@
 			}
 			});
 			
-		appStructure.masterMeasures.forEach((measure: any, index: number) => {
-			if (measure.qMeasure) {
+			appStructure.masterMeasures.forEach((measure: any, idx: number) => {
+				if (measure.qMeasure) {
 					extractObjects(
 						measure.qMeasure,
-						`masterMeasures[${index}].qMeasure`,
+						`masterMeasures[${idx}].qMeasure`,
 						{ appName, appId, inMasterMeasures: true, inQmeasure: true },
 						appId,
 						appName,
@@ -486,7 +499,7 @@
 			}
 			});
 			
-			appStructure.sheetDimensions.forEach((dim: any, index: number) => {
+			appStructure.sheetDimensions.forEach((dim: any, idx: number) => {
 				const sheetId = dim.sheetId;
 				const sheetName = dim.sheetTitle || getSheetNameFromId(sheetId) || null;
 				const sheetUrl = dim.sheetUrl || null;
@@ -494,7 +507,7 @@
 				const chartUrl = dim.chartUrl || null;
 				
 				if (dim.qDef) {
-					// For inline qDef, we need to find the library reference if it exists for label extraction
+					// For inline dimensions, find the library reference if it exists for label extraction
 					let libraryDimForLabels = null;
 					if (dim.qLibraryId) {
 						libraryDimForLabels = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
@@ -502,7 +515,7 @@
 					// Pass the library dimension as parentObj so we can extract labels from it
 					extractObjects(
 						dim.qDef,
-						`sheetDimensions[${index}].qDef`,
+						`sheetDimensions[${idx}].qDef`,
 						{
 							appName,
 							appId,
@@ -519,11 +532,12 @@
 						libraryDimForLabels || dim // Use library dim if available for label extraction
 					);
 				} else if (dim.qLibraryId) {
+					// Library dimension reference - look up from master dimensions
 					const libraryDim = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
 					if (libraryDim?.qDim) {
 						extractObjects(
 							libraryDim.qDim,
-							`sheetDimensions[${index}].qDef`,
+							`sheetDimensions[${idx}].qDef`,
 							{
 								appName,
 								appId,
@@ -543,7 +557,7 @@
 				}
 			});
 			
-			appStructure.sheetMeasures.forEach((measure: any, index: number) => {
+			appStructure.sheetMeasures.forEach((measure: any, idx: number) => {
 				const sheetId = measure.sheetId;
 				const sheetName = measure.sheetTitle || getSheetNameFromId(sheetId) || null;
 				const sheetUrl = measure.sheetUrl || null;
@@ -551,7 +565,7 @@
 				const chartUrl = measure.chartUrl || null;
 				
 				if (measure.qDef) {
-					// For inline qDef, we need to find the library reference if it exists for label extraction
+					// For inline measures, find the library reference if it exists for label extraction
 					let libraryMeasureForLabels = null;
 					if (measure.qLibraryId) {
 						libraryMeasureForLabels = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
@@ -559,7 +573,7 @@
 					// Pass the library measure as parentObj so we can extract labels from it
 					extractObjects(
 						measure.qDef,
-						`sheetMeasures[${index}].qDef`,
+						`sheetMeasures[${idx}].qDef`,
 						{
 							appName,
 							appId,
@@ -576,11 +590,12 @@
 						libraryMeasureForLabels || measure // Use library measure if available for label extraction
 					);
 				} else if (measure.qLibraryId) {
+					// Library measure reference - look up from master measures
 					const libraryMeasure = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
 					if (libraryMeasure?.qMeasure) {
 						extractObjects(
 							libraryMeasure.qMeasure,
-							`sheetMeasures[${index}].qDef`,
+							`sheetMeasures[${idx}].qDef`,
 							{
 								appName,
 								appId,
@@ -603,7 +618,7 @@
 
 		searchableIndex = index;
 
-		// Create a searchable labels string for each item for Fuse.js
+		// Create searchable labels string for Fuse.js full-text search
 		const indexWithLabelsString = index.map(item => ({
 			...item,
 			labelsString: item.labels.join(' ')
@@ -631,33 +646,44 @@
 		performSearch();
 	}
 
+	// Configure Qlik API auth once - returns the API module
+	async function ensureAuthConfigured(): Promise<{ qlikApi: any; tenantUrl: string }> {
+		const authState = authStore;
+		let currentAuthState: any = null;
+		const unsubscribe = authState.subscribe(state => {
+			currentAuthState = state;
+		});
+		unsubscribe();
+		
+		if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
+			throw new Error('Not authenticated');
+		}
+		
+		const tenantUrl = currentAuthState.tenantUrl;
+		const qlikApi = await loadQlikAPI();
+		
+		// Only configure auth once per session
+		if (!isAuthConfigured) {
+			const tenantInfo = parseTenantUrl(tenantUrl);
+			const authConfig = createAuthConfig(tenantInfo);
+			const { auth } = qlikApi;
+			auth.setDefaultHostConfig(authConfig);
+			isAuthConfigured = true;
+		}
+		
+		return { qlikApi, tenantUrl };
+	}
+
 	async function loadSpaces() {
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
+			const { qlikApi } = await ensureAuthConfigured();
 			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				throw new Error('Not authenticated');
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const tenantInfo = parseTenantUrl(tenantUrl);
-			const qlikApi = await loadQlikAPI();
-			
-			// Check if spaces API is available
 			if (!qlikApi.spaces) {
 				spaces = [];
 				return;
 			}
 			
-			const { auth, spaces: spacesApi } = qlikApi;
-			
-			const authConfig = createAuthConfig(tenantInfo);
-			auth.setDefaultHostConfig(authConfig);
+			const { spaces: spacesApi } = qlikApi;
 			
 			const spacesResponse = await spacesApi.getSpaces();
 			if (spacesResponse.status !== 200) {
@@ -667,14 +693,13 @@
 			const allSpaces = spacesResponse.data?.data || [];
 			spaces = allSpaces
 				.map((space: any, index: number) => {
-					// Try multiple possible ID fields
 					const id = space.resourceId || space.id || space.spaceId || `space-${index}`;
 					return {
 						name: space.name || space.resourceId || space.id || `Space ${index + 1}`,
 						id: id
 					};
 				})
-				.filter((space: any) => space.id && space.id !== 'undefined'); // Filter out any spaces without a valid ID
+				.filter((space: any) => space.id && space.id !== 'undefined');
 		} catch (err: any) {
 			console.error('Failed to load spaces:', err);
 			// Don't throw - spaces might not be available in all tenants
@@ -689,24 +714,8 @@
 		dataLoadError = null;
 		
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
-			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				throw new Error('Not authenticated');
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const tenantInfo = parseTenantUrl(tenantUrl);
-			const qlikApi = await loadQlikAPI();
-			const { auth, items } = qlikApi;
-			
-			const authConfig = createAuthConfig(tenantInfo);
-			auth.setDefaultHostConfig(authConfig);
+			const { qlikApi } = await ensureAuthConfigured();
+			const { items } = qlikApi;
 			
 			// Load spaces in parallel with apps (don't await to avoid blocking)
 			loadSpaces().catch(err => {
@@ -743,19 +752,7 @@
 		loadingProgress = { current: qlikApps.length, total: appItems.length, currentApp: '' };
 		
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
-			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				return;
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const qlikApi = await loadQlikAPI();
+			const { qlikApi, tenantUrl } = await ensureAuthConfigured();
 			const { qix } = qlikApi;
 			
 			const loadedAppIds = new Set(qlikApps.map(a => a.id));
@@ -782,8 +779,10 @@
 					currentApp: appName 
 				};
 				
+				let session: any = null;
+				
 				try {
-					const session = await qix.openAppSession({ appId });
+					session = await qix.openAppSession({ appId });
 					const app = await session.getDoc();
 					const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
 					
@@ -811,10 +810,17 @@
 						});
 						sheets = [...sheets, ...newSheets];
 					}
-					await session.close();
 					buildSearchableIndex();
 				} catch (err: any) {
 				} finally {
+					// Always close the session
+					if (session) {
+						try {
+							await session.close();
+						} catch (closeErr) {
+							console.warn(`Failed to close session for ${appName}:`, closeErr);
+						}
+					}
 					const newLoadingIds = new Set(loadingAppIds);
 					newLoadingIds.delete(appId);
 					loadingAppIds = newLoadingIds;
@@ -851,20 +857,10 @@
 		if (qlikApps.find(a => a.id === appId)) return;
 		if (loadingAppIds.has(appId)) return;
 		
+		let session: any = null;
+		
 		try {
-			const authState = authStore;
-			let currentAuthState: any = null;
-			const unsubscribe = authState.subscribe(state => {
-				currentAuthState = state;
-			});
-			unsubscribe();
-			
-			if (!currentAuthState?.isAuthenticated || !currentAuthState?.tenantUrl) {
-				return;
-			}
-			
-			const tenantUrl = currentAuthState.tenantUrl;
-			const qlikApi = await loadQlikAPI();
+			const { qlikApi, tenantUrl } = await ensureAuthConfigured();
 			const { qix } = qlikApi;
 			
 			const appName = appItem.name || appId;
@@ -875,7 +871,7 @@
 				currentApp: appName 
 			};
 			
-			const session = await qix.openAppSession({ appId });
+			session = await qix.openAppSession({ appId });
 			const app = await session.getDoc();
 			const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
 			
@@ -896,9 +892,21 @@
 				});
 				sheets = [...sheets, ...newSheets];
 			}
-			await session.close();
 			buildSearchableIndex();
 			
+			loadAppDataInBackground();
+			
+		} catch (err: any) {
+			console.warn(`Failed to load app ${appId}:`, err);
+		} finally {
+			// Always close the session
+			if (session) {
+				try {
+					await session.close();
+				} catch (closeErr) {
+					console.warn('Failed to close session:', closeErr);
+				}
+			}
 			const newLoadingIds = new Set(loadingAppIds);
 			newLoadingIds.delete(appId);
 			loadingAppIds = newLoadingIds;
@@ -907,13 +915,6 @@
 				total: appItems.length, 
 				currentApp: '' 
 			};
-			
-			loadAppDataInBackground();
-			
-		} catch (err: any) {
-			const newLoadingIds = new Set(loadingAppIds);
-			newLoadingIds.delete(appId);
-			loadingAppIds = newLoadingIds;
 		}
 	}
 	
@@ -926,6 +927,9 @@
 		fuseInstance = null;
 		loadingAppIds = new Set();
 		loadingProgress = { current: 0, total: 0, currentApp: '' };
+		hasNewDataPending = false;
+		lastRefreshedAppsCount = 0;
+		// Note: We don't reset isAuthConfigured as the same auth session can be reused
 		
 		selectedSpaces = new Set();
 		selectedApps = new Set();
@@ -936,6 +940,7 @@
 	}
 	
 	onMount(() => {
+		let previousTenantUrl = '';
 		const unsubscribe = authStore.subscribe(state => {
 			// Extract hostname from tenant URL for keying purposes
 			if (state.tenantUrl) {
@@ -945,8 +950,16 @@
 				} catch {
 					currentTenantHostname = state.tenantUrl;
 				}
+				
+				// Reset auth config if tenant URL changed
+				if (previousTenantUrl && previousTenantUrl !== state.tenantUrl) {
+					isAuthConfigured = false;
+				}
+				previousTenantUrl = state.tenantUrl;
 			} else {
 				currentTenantHostname = '';
+				// Reset auth config if logged out
+				isAuthConfigured = false;
 			}
 			
 			if (state.isAuthenticated && appItems.length === 0 && !isLoadingApps) {
@@ -977,8 +990,10 @@
 		const hasSheetSelections = selectedSheets.size > 0;
 		const hasTypeSelections = selectedTypes.size > 0;
 		
+		// Check if all items are selected (compare against total counts, not filtered available items)
 		const allSpacesSelected = hasSpaceSelections && selectedSpaces.size === spaces.length;
-		const allAppsSelected = hasAppSelections && selectedApps.size === availableApps.length;
+		// For apps, compare against the total apps list, not filtered availableApps
+		const allAppsSelected = hasAppSelections && selectedApps.size === apps.length;
 		const allSheetsSelected = hasSheetSelections && availableSheets.length > 0 && selectedSheets.size >= availableSheets.length;
 		const allTypesSelected = hasTypeSelections && selectedTypes.size === typeOptions.length;
 		
@@ -988,6 +1003,18 @@
 		const hasTypeFilters = hasTypeSelections && !allTypesSelected;
 		
 		const hasAnySelections = hasSpaceSelections || hasAppSelections || hasSheetSelections || hasTypeSelections;
+		
+		// Debug: log filter state
+		if (hasAppSelections) {
+			console.log('App filter debug:', {
+				selectedApps: Array.from(selectedApps),
+				hasAppSelections,
+				allAppsSelected,
+				hasAppFilters,
+				appsLength: apps.length,
+				availableAppsLength: availableApps.length
+			});
+		}
 
 		if (!hasQuery && !hasAnySelections && qlikApps.length === 0) {
 			searchResults = [];
@@ -1024,13 +1051,13 @@
 			
 			// Filter by space first (if space filter is active)
 			if (hasSpaceFilters) {
-				const app = apps.find(a => a.name === item.app);
+				const app = apps.find(a => a.id === item.appId);
 				if (!app || !app.spaceId || !selectedSpaces.has(app.spaceId)) {
 					continue;
 				}
 			}
 
-			if (hasAppFilters && !selectedApps.has(item.app)) {
+			if (hasAppFilters && !selectedApps.has(item.appId)) {
 				continue;
 			}
 
@@ -1070,87 +1097,59 @@
 				});
 			}
 
-			allResults.push({
-				path: item.path,
-				object: item.object,
-				objectType: item.objectType,
-				context: item.context,
-				file: item.file,
-				app: item.app,
-				sheet: sheetName,
-				sheetName: sheetName,
-				sheetId: item.sheetId || null,
-				sheetUrl: item.sheetUrl || null,
-				chartId: item.chartId || null,
-				chartTitle: item.chartTitle || null,
-				chartUrl: item.chartUrl || null,
-				labels: item.labels || []
-			});
-		}
-		
-		searchResults = allResults;
-		// Hide searching spinner when:
-		// 1. We have results (whether incremental or not)
-		// 2. This wasn't incremental (user-initiated search completed)
-		if (allResults.length > 0 || !incremental) {
-			isSearching = false;
-		}
+		allResults.push({
+			path: item.path,
+			object: item.object,
+			objectType: item.objectType,
+			context: item.context,
+			file: item.file,
+			app: item.app,
+			appId: item.appId,
+			sheet: sheetName,
+			sheetName: sheetName,
+			sheetId: item.sheetId || null,
+			sheetUrl: item.sheetUrl || null,
+			chartId: item.chartId || null,
+			chartTitle: item.chartTitle || null,
+			chartUrl: item.chartUrl || null,
+			labels: item.labels || []
+		});
+	}
+	
+	searchResults = allResults;
+	isSearching = false;
 	}
 
 	const typeOptions = ['Master Measure', 'Master Dimension', 'Sheet Measure', 'Sheet Dimension'];
 	
 	let searchEffectTimeout: ReturnType<typeof setTimeout> | null = null;
 	
-	// Track previous values to detect user-initiated changes
-	let previousQuery = $state('');
-	let previousSpacesSize = $state(0);
-	let previousAppsSize = $state(0);
-	let previousSheetsSize = $state(0);
-	let previousTypesSize = $state(0);
-	
+	// Effect for filter/query changes - triggers search when filters change
 	$effect(() => {
+		// Read all filter values to create reactive dependencies
 		const query = searchQuery;
 		const spacesSize = selectedSpaces.size;
 		const appsSize = selectedApps.size;
 		const sheetsSize = selectedSheets.size;
 		const typesSize = selectedTypes.size;
-		const qlikAppsLength = qlikApps.length;
 		
 		if (searchEffectTimeout) {
 			clearTimeout(searchEffectTimeout);
 		}
 		
-		const hasQuery = searchQuery.trim().length > 0;
-		const hasSelections = selectedSpaces.size > 0 || selectedApps.size > 0 || selectedSheets.size > 0 || selectedTypes.size > 0;
+		// Use untrack to read qlikApps.length without creating a dependency
+		// This prevents the effect from re-running when new apps load
+		const appsLoaded = untrack(() => qlikApps.length);
 		
-		// Detect if user changed search or filters (not just apps loading)
-		const userChangedSearch = query !== previousQuery;
-		const userChangedFilters = 
-			spacesSize !== previousSpacesSize ||
-			appsSize !== previousAppsSize ||
-			sheetsSize !== previousSheetsSize ||
-			typesSize !== previousTypesSize;
-		
-		// Update previous values
-		previousQuery = query;
-		previousSpacesSize = spacesSize;
-		previousAppsSize = appsSize;
-		previousSheetsSize = sheetsSize;
-		previousTypesSize = typesSize;
-		
-		// Determine if we should append incrementally (loading apps) or rebuild (user changed something)
-		const shouldIncremental = !userChangedSearch && !userChangedFilters && isLoadingAppData;
-		
-		if (hasQuery || hasSelections || qlikApps.length > 0) {
-			// Only set isSearching if user changed something (not incremental) or if no results yet
-			// This prevents flashing during incremental updates when results already exist
-			if (!shouldIncremental || searchResults.length === 0) {
-				isSearching = true;
-			}
+		// Always trigger search when filters change, even if no apps loaded yet
+		// The search will filter based on what's available, and auto-refresh will update when data loads
+		if (appsLoaded > 0) {
+			isSearching = true;
 			searchEffectTimeout = setTimeout(() => {
-				performSearch(shouldIncremental);
+				performSearch();
 			}, 200);
 		} else {
+			// No apps loaded yet - clear results
 			searchResults = [];
 			unfilteredResults = [];
 			isSearching = false;
@@ -1162,6 +1161,31 @@
 			}
 		};
 	});
+	
+	// Effect to track when new data is available
+	$effect(() => {
+		const currentAppsCount = qlikApps.length;
+		if (currentAppsCount > lastRefreshedAppsCount) {
+			hasNewDataPending = true;
+		}
+	});
+	
+	// Auto-refresh table when loading completes
+	$effect(() => {
+		const loading = isLoadingAppData;
+		if (!loading && hasNewDataPending && qlikApps.length > 0) {
+			// Loading just completed - auto-refresh the table
+			hasNewDataPending = false;
+			lastRefreshedAppsCount = qlikApps.length;
+			performSearch();
+		}
+	});
+	
+	function refreshTable() {
+		lastRefreshedAppsCount = qlikApps.length;
+		hasNewDataPending = false;
+		performSearch();
+	}
 
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	function handleSearchInput(value: string) {
@@ -1185,24 +1209,21 @@
 		selectedSpaces = newSet;
 	}
 
-	function toggleApp(appName: string) {
+	function toggleApp(appId: string) {
 		const newSet = createNewSet(selectedApps);
-		const wasSelected = newSet.has(appName);
+		const wasSelected = newSet.has(appId);
 		
 		if (wasSelected) {
-			newSet.delete(appName);
+			newSet.delete(appId);
 			const sheetsToRemove = sheets
-				.filter((sheet) => sheet.app === appName)
+				.filter((sheet) => sheet.appId === appId)
 				.map((sheet) => sheet.name);
 			const newSheetsSet = createNewSet(selectedSheets);
 			sheetsToRemove.forEach((sheetName) => newSheetsSet.delete(sheetName));
 			selectedSheets = newSheetsSet;
 		} else {
-			newSet.add(appName);
-			const app = apps.find(a => a.name === appName);
-			if (app) {
-				loadAppDataPriority(app.id);
-			}
+			newSet.add(appId);
+			loadAppDataPriority(appId);
 		}
 		selectedApps = newSet;
 	}
@@ -1226,7 +1247,7 @@
 	}
 
 	function selectAllApps() {
-		selectedApps = new Set(availableApps.map((a) => a.name));
+		selectedApps = new Set(availableApps.map((a) => a.id));
 		availableApps.forEach(app => {
 			loadAppDataPriority(app.id);
 		});
@@ -1320,7 +1341,7 @@
 
 <div class="w-full flex-1 flex min-h-0 gap-4">
 	<FilterSidebar
-		spaces={spaces}
+		spaces={availableSpaces}
 		apps={availableApps}
 		{availableSheets}
 		{availableTypes}
@@ -1328,6 +1349,8 @@
 		{selectedApps}
 		{selectedSheets}
 		{selectedTypes}
+		{loadedAppIds}
+		{loadingAppIds}
 		tenantHostname={currentTenantHostname}
 		onToggleSpace={toggleSpace}
 		onToggleApp={toggleApp}
@@ -1370,6 +1393,8 @@
 					current={loadingProgress.current}
 					total={loadingProgress.total}
 					currentApp={loadingProgress.currentApp}
+					hasNewData={hasNewDataPending}
+					onRefreshTable={refreshTable}
 				/>
 			{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
 				<CompletionIndicator

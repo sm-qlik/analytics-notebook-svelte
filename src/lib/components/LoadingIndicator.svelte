@@ -3,13 +3,15 @@
 		current: number;
 		total: number;
 		currentApp: string;
+		hasNewData?: boolean;
+		onRefreshTable?: () => void;
 	}
 
-	let { current, total, currentApp }: Props = $props();
+	let { current, total, currentApp, hasNewData = false, onRefreshTable }: Props = $props();
 </script>
 
 <div class="flex-shrink-0 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-	<div class="flex items-center justify-between">
+	<div class="flex items-center justify-between gap-3">
 		<div class="flex items-center gap-3 flex-1">
 			<div class="flex-shrink-0">
 				<svg class="animate-spin h-4 w-4 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -21,11 +23,9 @@
 				<p class="text-sm font-medium text-blue-900 dark:text-blue-100">
 					Loading app data: {current} of {total} apps
 				</p>
-				{#if currentApp}
-					<p class="text-xs text-blue-700 dark:text-blue-300 truncate">
-						Currently loading: {currentApp}
-					</p>
-				{/if}
+				<p class="text-xs text-blue-700 dark:text-blue-300 truncate h-4">
+					{#if currentApp}Currently loading: {currentApp}{:else}&nbsp;{/if}
+				</p>
 				<div class="mt-2 w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5">
 					<div 
 						class="bg-blue-600 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
@@ -34,6 +34,18 @@
 				</div>
 			</div>
 		</div>
+		{#if hasNewData && onRefreshTable}
+			<button
+				type="button"
+				onclick={onRefreshTable}
+				class="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-800/50 hover:bg-blue-200 dark:hover:bg-blue-700/50 rounded-md transition-colors"
+			>
+				<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+				</svg>
+				Refresh Table
+			</button>
+		{/if}
 	</div>
 </div>
 

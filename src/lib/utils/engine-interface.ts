@@ -111,7 +111,7 @@ export class EngineInterface {
 		// Get app layout with metadata
 		const appLayout = await app.getAppLayout();
 
-		// Get master measures
+		// Define props for all list objects
 		const measureListProps = {
 			qInfo: {
 				qId: 'MeasureList',
@@ -127,17 +127,6 @@ export class EngineInterface {
 			},
 		};
 
-		const measurelist = await app.createSessionObject(measureListProps);
-		const measures = await measurelist.getLayout();
-		const masterMeasures = await Promise.all(
-			measures.qMeasureList.qItems.map(async (item: any) => {
-				const measure = await app.getMeasure(item.qInfo.qId);
-				const props = await measure.getProperties();
-				return props;
-			})
-		);
-
-		// Get master dimensions
 		const dimensionListProps = {
 			qInfo: {
 				qId: 'DimensionList',
@@ -155,17 +144,6 @@ export class EngineInterface {
 			},
 		};
 
-		const dimensionList = await app.createSessionObject(dimensionListProps);
-		const dimensions = await dimensionList.getLayout();
-		const masterDimensions = await Promise.all(
-			dimensions.qDimensionList.qItems.map(async (item: any) => {
-				const dimension = await app.getDimension(item.qInfo.qId);
-				const props = await dimension.getProperties();
-				return props;
-			})
-		);
-
-		// Get sheets
 		const sheetListProps = {
 			qInfo: {
 				qId: 'SheetList',
@@ -190,8 +168,38 @@ export class EngineInterface {
 			},
 		};
 
-		const sheetList = await app.createSessionObject(sheetListProps);
-		const sheetListLayout = await sheetList.getLayout();
+		// Create all session objects in parallel
+		const [measurelist, dimensionList, sheetList] = await Promise.all([
+			app.createSessionObject(measureListProps),
+			app.createSessionObject(dimensionListProps),
+			app.createSessionObject(sheetListProps)
+		]);
+
+		// Get all layouts in parallel
+		const [measures, dimensions, sheetListLayout] = await Promise.all([
+			measurelist.getLayout(),
+			dimensionList.getLayout(),
+			sheetList.getLayout()
+		]);
+
+		// Fetch all master measures and dimensions in parallel
+		const [masterMeasures, masterDimensions] = await Promise.all([
+			Promise.all(
+				measures.qMeasureList.qItems.map(async (item: any) => {
+					const measure = await app.getMeasure(item.qInfo.qId);
+					const props = await measure.getProperties();
+					return props;
+				})
+			),
+			Promise.all(
+				dimensions.qDimensionList.qItems.map(async (item: any) => {
+					const dimension = await app.getDimension(item.qInfo.qId);
+					const props = await dimension.getProperties();
+					return props;
+				})
+			)
+		]);
+
 		const sheets: any[] = [];
 		const sheetDimensions: any[] = [];
 		const sheetMeasures: any[] = [];
@@ -216,14 +224,7 @@ export class EngineInterface {
 
 				sheets.push(sheetProps);
 
-				// Debug: Log sheet info for the specific app mentioned
-				if (appId.includes('Nutra_Green_Sales_BAStart') || sheetTitle?.includes('Nutra')) {
-					console.log(`[DEBUG] Processing sheet: ${sheetTitle} (${sheetId})`);
-					console.log(`[DEBUG] Sheet published: ${sheetProps.published}`);
-					console.log(`[DEBUG] Sheet props keys:`, Object.keys(sheetProps));
-				}
-
-				// Find all objects with qInfo (charts, listboxes, filter panes, etc.)
+				// Recursively find all visualization objects in the sheet
 				function findObjects(obj: any, path = ''): void {
 					if (obj === null || obj === undefined) return;
 
@@ -397,36 +398,16 @@ export class EngineInterface {
 									const cellObject = await app.getObject(cell.name);
 									const cellLayout = await cellObject.getLayout();
 									findObjects(cellLayout);
-								} catch (err) {
+								} catch {
 									// Some objects might not be accessible, skip them
-									console.warn(`[DEBUG] Could not get layout for object ${cell.name}:`, err);
 								}
 							}
 						})
 					);
 				}
 
-				// Debug: Log extraction results for the specific app
-				if (appId.includes('Nutra_Green_Sales_BAStart') || sheetTitle?.includes('Nutra')) {
-					console.log(`[DEBUG] Sheet ${sheetTitle} - Found ${sheetDimensions.length} dimensions, ${sheetMeasures.length} measures`);
-					if (sheetDimensions.length === 0 && sheetMeasures.length === 0) {
-						console.warn(`[DEBUG] No dimensions/measures found in sheet ${sheetTitle}. Sheet structure:`, {
-							hasQProperty: !!sheetProps.qProperty,
-							hasCells: !!sheetProps.qProperty?.cells,
-							hasChildren: !!sheetProps.qProperty?.children,
-							keys: Object.keys(sheetProps.qProperty || {})
-						});
-						// Try to get the layout to see what's actually on the sheet
-						console.log(`[DEBUG] Sheet layout:`, sheetLayout);
-					}
-				}
 			})
 		);
-
-		// Debug: Log total extraction results
-		if (appId.includes('Nutra_Green_Sales_BAStart')) {
-			console.log(`[DEBUG] App ${appId} - Total: ${sheetDimensions.length} sheet dimensions, ${sheetMeasures.length} sheet measures`);
-		}
 
 		return {
 			appLayout,

@@ -8,6 +8,7 @@
 		context: any;
 		file?: string;
 		app?: string;
+		appId?: string;
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -149,7 +150,9 @@
 								</div>
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								<div class="truncate" title={result.app}>{result.app}</div>
+								<div class="truncate" title="{result.app} ({result.appId})">
+									{result.app} <span class="text-gray-400 dark:text-gray-500">({result.appId?.slice(0, 8)}...)</span>
+								</div>
 							</td>
 						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 							{#if sheetUrl && sheetName !== 'N/A'}
