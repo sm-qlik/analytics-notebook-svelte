@@ -369,8 +369,11 @@
 
 			if (shouldProcessAsObject || shouldProcessAsString) {
 				const objectPath = path;
-				if (!processedObjects.has(objectPath)) {
-					processedObjects.set(objectPath, true);
+				// Key processed objects on App ID and path
+				// TODO: Differentiate between tenants - App ID may be duplicated betweeen tenants!
+				const itemIdentifier = ''.concat(appId, '-', path);
+				if (!processedObjects.has(itemIdentifier)) {
+					processedObjects.set(itemIdentifier, true);
 					// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
 					const labels = shouldProcessAsString 
 						? extractLabels(null, parentObj, newContext)
