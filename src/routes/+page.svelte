@@ -200,7 +200,7 @@
 
 
 <header class="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800">
-	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+	<div class="px-[10px] max-w-full">
 		<div class="flex justify-between items-center h-16">
 			<!-- Logo and Navigation -->
 			<div class="flex items-center">
@@ -244,14 +244,14 @@
 
 <!-- Main Content -->
 {#if isCheckingAuth}
-	<main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex items-center justify-center">
+	<main class="flex-1 px-[10px] py-8 w-full flex items-center justify-center max-w-full">
 		<div class="text-center">
 			<div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
 			<p class="mt-4 text-sm text-gray-600 dark:text-gray-400">Checking authentication...</p>
 		</div>
 	</main>
 {:else if isAuthenticated}
-	<main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex flex-col min-h-0">
+	<main class="flex-1 px-[10px] py-8 w-full flex flex-col min-h-0 max-w-full">
 		<!-- Search Component -->
 		<Search />
 		
@@ -266,7 +266,7 @@
 
 <!-- Footer -->
 <footer class="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+	<div class="px-[10px] py-4 max-w-full">
 		<div class="flex justify-between items-center">
 			<div class="text-sm text-gray-500 dark:text-gray-400">
 				<p>Analytics Notebook</p>

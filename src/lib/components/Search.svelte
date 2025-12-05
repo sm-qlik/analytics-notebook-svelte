@@ -62,6 +62,7 @@
 	let hasNewDataPending = $state(false);
 	let lastRefreshedAppsCount = $state(0);
 	let isAuthConfigured = $state(false);
+	let isSidebarCollapsed = $state(false);
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
 		return new Set(oldSet);
@@ -260,19 +261,8 @@
 			labels.push(...parentFieldLabels);
 		}
 		
-		// Extract chartTitle and sheetTitle from context
-		if (context && typeof context === 'object') {
-			if (context.chartTitle && typeof context.chartTitle === 'string' && context.chartTitle.trim()) {
-				labels.push(context.chartTitle.trim());
-			}
-			if (context.sheetName && typeof context.sheetName === 'string' && context.sheetName.trim()) {
-				labels.push(context.sheetName.trim());
-			}
-			// Also check for sheetTitle (alternative name)
-			if (context.sheetTitle && typeof context.sheetTitle === 'string' && context.sheetTitle.trim()) {
-				labels.push(context.sheetTitle.trim());
-			}
-		}
+		// Note: chartTitle and sheetName/sheetTitle are excluded from labels
+		// since they have their own dedicated columns in the table
 		
 		// Remove duplicates and return
 		return [...new Set(labels)];
@@ -404,6 +394,20 @@
 					// Add labels to searchable text so they can be searched
 					if (labels.length > 0) {
 						searchableText += ' ' + labels.join(' ');
+					}
+					// Add sheet and chart names/titles to searchable text
+					if (newContext.sheetName && typeof newContext.sheetName === 'string') {
+						searchableText += ' ' + newContext.sheetName.trim();
+					}
+					if (newContext.sheetTitle && typeof newContext.sheetTitle === 'string') {
+						searchableText += ' ' + newContext.sheetTitle.trim();
+					}
+					if (newContext.chartTitle && typeof newContext.chartTitle === 'string') {
+						searchableText += ' ' + newContext.chartTitle.trim();
+					}
+					// Also check for chartName if it exists
+					if (newContext.chartName && typeof newContext.chartName === 'string') {
+						searchableText += ' ' + newContext.chartName.trim();
 					}
 					
 					// Extract title from object
@@ -636,7 +640,8 @@
 				{ name: 'labelsString', weight: 0.4 },
 				{ name: 'searchableText', weight: 0.3 },
 				{ name: 'app', weight: 0.1 },
-				{ name: 'sheetName', weight: 0.05 },
+				{ name: 'sheetName', weight: 0.08 },
+				{ name: 'chartTitle', weight: 0.08 },
 				{ name: 'objectType', weight: 0.05 }
 			],
 			threshold: 0.3,
@@ -1345,7 +1350,7 @@
 	}
 </script>
 
-<div class="w-full flex-1 flex min-h-0 gap-4">
+<div class="w-full flex-1 flex min-h-0 {isSidebarCollapsed ? 'gap-[10px]' : 'gap-4'} relative min-w-0">
 	<FilterSidebar
 		spaces={availableSpaces}
 		apps={availableApps}
@@ -1356,6 +1361,8 @@
 		{loadedAppIds}
 		{loadingAppIds}
 		tenantHostname={currentTenantHostname}
+		isCollapsed={isSidebarCollapsed}
+		onToggleCollapse={() => isSidebarCollapsed = !isSidebarCollapsed}
 		onToggleSpace={toggleSpace}
 		onToggleApp={toggleApp}
 		onToggleSheet={toggleSheet}

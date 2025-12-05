@@ -28,6 +28,13 @@
 	}
 
 	let { results, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId }: Props = $props();
+
+	// Highlighting disabled due to performance issues with large result sets
+	const shouldHighlight = $derived(false);
+	
+	function shouldHighlightText(text: string, query: string): boolean {
+		return false;
+	}
 </script>
 
 <div class="flex flex-col flex-1 min-h-0 space-y-4">
@@ -64,24 +71,23 @@
 	</div>
 
 	{#if results.length > 0}
-		<div class="overflow-y-auto flex-1 min-h-0">
-			<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
+		<div class="overflow-y-auto overflow-x-hidden flex-1 min-h-0 min-w-0">
+			<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 min-w-0">
 				<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
 					<tr>
-						<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
-						<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Labels</th>
-						<th class="w-[35%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
-						<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">App</th>
-					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
-					<th class="w-[8%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
-					<th class="w-[10%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart Title</th>
+					  <th class="w-[13%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Labels</th>
+					  <th class="w-[28%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
+					  <th class="w-[16%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">App</th>
+					  <th class="w-[16%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
+					  <th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+					  <th class="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart Title</th>
 					</tr>
 				</thead>
 				<tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
 					{#each results as result}
 					{@const obj = result.object}
 					{@const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || 'N/A'}
-					{@const definition = obj?.qDef || 'N/A'}
+					{@const definition = typeof obj === 'string' ? obj : (obj?.qDef || 'N/A')}
 					{@const sheetName = result.sheet || result.sheetName || 'N/A'}
 					{@const sheetId = result.sheetId || result.context?.sheetId || null}
 					{@const sheetUrl = result.sheetUrl || result.context?.sheetUrl || null}
@@ -91,13 +97,10 @@
 					{@const labels = result.labels || []}
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								<div class="truncate" title={title}>{title}</div>
-							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								{#if labels.length > 0}
 									<div class="flex flex-wrap gap-1">
 										{#each labels as label}
-											<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" title={label}>
+											<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 {shouldHighlightText(label, searchQuery) ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : ''}" title={label}>
 												{label}
 											</span>
 										{/each}
@@ -108,7 +111,9 @@
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="flex items-start gap-2 group">
-									<div class="flex-1 break-words whitespace-normal min-w-0" title={definition}>{definition}</div>
+									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
+										{definition}
+									</div>
 									{#if definition !== 'N/A'}
 										<button
 											type="button"
@@ -150,7 +155,7 @@
 								</div>
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								<div class="truncate" title="{result.app} ({result.appId})">
+								<div class="truncate {shouldHighlightText(result.app || '', searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
 									{result.app} <span class="text-gray-400 dark:text-gray-500">({result.appId?.slice(0, 8)}...)</span>
 								</div>
 							</td>
@@ -160,13 +165,15 @@
 									href={sheetUrl}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="text-blue-600 dark:text-blue-400 hover:underline truncate block"
+									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(sheetName, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
 									title={sheetName}
 								>
 									{sheetName}
 								</a>
 							{:else}
-								<div class="truncate" title={sheetName}>{sheetName}</div>
+								<div class="truncate {shouldHighlightText(sheetName, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={sheetName}>
+									{sheetName}
+								</div>
 							{/if}
 						</td>
 						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
@@ -178,7 +185,7 @@
 									href={chartUrl}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="text-blue-600 dark:text-blue-400 hover:underline truncate block"
+									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(chartTitle, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
 									title={chartTitle}
 								>
 									{chartTitle}

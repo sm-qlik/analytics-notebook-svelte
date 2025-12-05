@@ -9,6 +9,8 @@
 		loadedAppIds: Set<string>;
 		loadingAppIds: Set<string>;
 		tenantHostname: string;
+		isCollapsed: boolean;
+		onToggleCollapse: () => void;
 		onToggleSpace: (spaceId: string) => void;
 		onToggleApp: (appId: string) => void;
 		onToggleSheet: (sheetName: string) => void;
@@ -30,6 +32,8 @@
 		loadedAppIds,
 		loadingAppIds,
 		tenantHostname,
+		isCollapsed,
+		onToggleCollapse,
 		onToggleSpace,
 		onToggleApp,
 		onToggleSheet,
@@ -72,10 +76,30 @@
 	);
 </script>
 
-<aside class="w-64 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-	<div class="p-4 border-b border-gray-200 dark:border-gray-700">
-		<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Filters</h2>
-	</div>
+<div class="relative flex-shrink-0 {isCollapsed ? 'w-8' : ''}">
+	<!-- Toggle Button at the top - always visible, flush against border -->
+	<button
+		type="button"
+		onclick={onToggleCollapse}
+		class="absolute top-0 {isCollapsed ? 'left-0' : 'right-0'} z-20 w-8 h-8 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 {isCollapsed ? 'rounded-r-lg border-l-0 border-r-2' : 'rounded-l-lg border-r-2'} shadow-lg hover:shadow-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex items-center justify-center text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 cursor-pointer"
+		title={isCollapsed ? "Show filters" : "Hide filters"}
+	>
+		<svg 
+			class="w-4 h-4 transition-transform {isCollapsed ? 'rotate-180' : ''}" 
+			fill="none" 
+			stroke="currentColor" 
+			stroke-width="2.5"
+			viewBox="0 0 24 24"
+		>
+			<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+		</svg>
+	</button>
+	
+	<aside class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 {isCollapsed ? 'w-0 overflow-hidden' : 'w-64'}">
+	{#if !isCollapsed}
+		<div class="p-4 border-b border-gray-200 dark:border-gray-700">
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Filters</h2>
+		</div>
 	<!-- Search Input for Apps & Spaces -->
 	<div class="px-4 pt-4">
 		<div class="relative">
@@ -365,6 +389,8 @@
 			{/if}
 		</div>
 
-	</div>
-</aside>
+		</div>
+	{/if}
+	</aside>
+</div>
 
