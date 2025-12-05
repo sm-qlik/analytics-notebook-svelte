@@ -62,7 +62,7 @@
 	<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
 		<div 
 			class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200"
-			on:keydown={(e) => e.key === 'Escape' && cancelRefresh()}
+			onkeydown={(e) => e.key === 'Escape' && cancelRefresh()}
 			tabindex="0"
 		>
 			<div class="flex items-start gap-4">
