@@ -2,64 +2,115 @@
 	interface Props {
 		spaces: Array<{ name: string; id: string }>;
 		apps: Array<{ name: string; id: string }>;
-		availableSheets: string[];
-		availableTypes: string[];
+		availableSheets: Array<{ name: string; id: string; appId: string }>;
 		selectedSpaces: Set<string>;
 		selectedApps: Set<string>;
 		selectedSheets: Set<string>;
-		selectedTypes: Set<string>;
 		loadedAppIds: Set<string>;
 		loadingAppIds: Set<string>;
 		tenantHostname: string;
 		onToggleSpace: (spaceId: string) => void;
 		onToggleApp: (appId: string) => void;
 		onToggleSheet: (sheetName: string) => void;
-		onToggleType: (typeName: string) => void;
 		onSelectAllSpaces: () => void;
 		onDeselectAllSpaces: () => void;
 		onSelectAllApps: () => void;
 		onDeselectAllApps: () => void;
 		onSelectAllSheets: () => void;
 		onDeselectAllSheets: () => void;
-		onSelectAllTypes: () => void;
-		onDeselectAllTypes: () => void;
 	}
 
 	let {
 		spaces,
 		apps,
 		availableSheets,
-		availableTypes,
 		selectedSpaces,
 		selectedApps,
 		selectedSheets,
-		selectedTypes,
 		loadedAppIds,
 		loadingAppIds,
 		tenantHostname,
 		onToggleSpace,
 		onToggleApp,
 		onToggleSheet,
-		onToggleType,
 		onSelectAllSpaces,
 		onDeselectAllSpaces,
 		onSelectAllApps,
 		onDeselectAllApps,
 		onSelectAllSheets,
-		onDeselectAllSheets,
-		onSelectAllTypes,
-		onDeselectAllTypes
+		onDeselectAllSheets
 	}: Props = $props();
 
 	let spacesExpanded = $state(true);
 	let appsExpanded = $state(true);
 	let sheetsExpanded = $state(true);
-	let typesExpanded = $state(true);
+
+	let searchQuery = $state('');
+	let sheetSearchQuery = $state('');
+
+	// Filtered spaces and apps based on search query
+	let filteredSpaces = $derived(
+		searchQuery.trim()
+			? spaces.filter((s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+			: spaces
+	);
+
+	let filteredApps = $derived(
+		searchQuery.trim()
+			? apps.filter((a) => a.name.toLowerCase().includes(searchQuery.toLowerCase()))
+			: apps
+	);
+
+	// Filtered sheets based on sheet search query (searches both name and ID)
+	let filteredSheets = $derived(
+		sheetSearchQuery.trim()
+			? availableSheets.filter((s) => 
+				s.name.toLowerCase().includes(sheetSearchQuery.toLowerCase()) ||
+				s.id.toLowerCase().includes(sheetSearchQuery.toLowerCase())
+			)
+			: availableSheets
+	);
 </script>
 
 <aside class="w-64 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
 	<div class="p-4 border-b border-gray-200 dark:border-gray-700">
 		<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Filters</h2>
+	</div>
+	<!-- Search Input for Apps & Spaces -->
+	<div class="px-4 pt-4">
+		<div class="relative">
+			<svg
+				class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+				fill="none"
+				stroke="currentColor"
+				viewBox="0 0 24 24"
+			>
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					stroke-width="2"
+					d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+				/>
+			</svg>
+			<input
+				type="text"
+				bind:value={searchQuery}
+				placeholder="Search apps & spaces..."
+				class="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+			/>
+			{#if searchQuery}
+				<button
+					type="button"
+					onclick={() => (searchQuery = '')}
+					aria-label="Clear search"
+					class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
+		</div>
 	</div>
 	<div class="flex-1 overflow-y-auto p-4 space-y-6">
 		<!-- Space Filters -->
@@ -112,7 +163,7 @@
 				</div>
 				{#if spacesExpanded}
 					<div class="space-y-2">
-						{#each spaces as space (space.id)}
+						{#each filteredSpaces as space (space.id)}
 							{@const isChecked = selectedSpaces.has(space.id)}
 							{@const spaceId = space.id}
 							<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
@@ -128,6 +179,9 @@
 								<span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{space.name}</span>
 							</label>
 						{/each}
+						{#if filteredSpaces.length === 0 && searchQuery}
+							<p class="text-xs text-gray-500 dark:text-gray-400 italic px-2">No matching spaces</p>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -176,7 +230,7 @@
 			</div>
 			{#if appsExpanded}
 				<div class="space-y-2">
-					{#each apps as app (`${tenantHostname}-${app.id}`)}
+					{#each filteredApps as app (`${tenantHostname}-${app.id}`)}
 						{@const isLoaded = loadedAppIds.has(app.id)}
 						{@const isLoading = loadingAppIds.has(app.id)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
@@ -207,6 +261,9 @@
 							</span>
 						</label>
 					{/each}
+					{#if filteredApps.length === 0 && searchQuery}
+						<p class="text-xs text-gray-500 dark:text-gray-400 italic px-2">No matching apps</p>
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -253,32 +310,10 @@
 				</div>
 			</div>
 			{#if sheetsExpanded}
-				<div class="space-y-2">
-					{#each availableSheets as sheetName, index (sheetName || `sheet-${index}`)}
-						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
-							<input
-								type="checkbox"
-								checked={selectedSheets.has(sheetName)}
-								onchange={() => onToggleSheet(sheetName)}
-								class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-							/>
-							<span class="ml-2 text-sm text-gray-700 dark:text-gray-300 truncate">{sheetName}</span>
-						</label>
-					{/each}
-				</div>
-			{/if}
-		</div>
-
-		<!-- Type Filters -->
-		<div>
-			<div class="flex items-center justify-between mb-3">
-				<button
-					type="button"
-					onclick={() => (typesExpanded = !typesExpanded)}
-					class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-				>
+				<!-- Sheet Search Input -->
+				<div class="relative mb-2">
 					<svg
-						class="w-4 h-4 transition-transform {typesExpanded ? 'rotate-90' : ''}"
+						class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"
 						fill="none"
 						stroke="currentColor"
 						viewBox="0 0 24 24"
@@ -287,45 +322,49 @@
 							stroke-linecap="round"
 							stroke-linejoin="round"
 							stroke-width="2"
-							d="M9 5l7 7-7 7"
+							d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
 						/>
 					</svg>
-					<span>Types ({selectedTypes.size}/{availableTypes.length})</span>
-				</button>
-				<div class="flex gap-1">
-					<button
-						type="button"
-						onclick={onSelectAllTypes}
-						class="text-xs text-purple-600 dark:text-purple-400 hover:underline"
-					>
-						All
-					</button>
-					<span class="text-xs text-gray-400">|</span>
-					<button
-						type="button"
-						onclick={onDeselectAllTypes}
-						class="text-xs text-purple-600 dark:text-purple-400 hover:underline"
-					>
-						None
-					</button>
+					<input
+						type="text"
+						bind:value={sheetSearchQuery}
+						placeholder="Search sheets..."
+						class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-1 focus:ring-green-500 focus:border-transparent"
+					/>
+					{#if sheetSearchQuery}
+						<button
+							type="button"
+							onclick={() => (sheetSearchQuery = '')}
+							aria-label="Clear sheet search"
+							class="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+						>
+							<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					{/if}
 				</div>
-			</div>
-			{#if typesExpanded && availableTypes.length > 0}
 				<div class="space-y-2">
-					{#each availableTypes as typeName, index (typeName || `type-${index}`)}
+					{#each filteredSheets as sheet (sheet.id)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 							<input
 								type="checkbox"
-								checked={selectedTypes.has(typeName)}
-								onchange={() => onToggleType(typeName)}
-								class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+								checked={selectedSheets.has(sheet.id)}
+								onchange={() => onToggleSheet(sheet.id)}
+								class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
 							/>
-							<span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{typeName}</span>
+							<span class="ml-2 text-sm text-gray-700 dark:text-gray-300 truncate" title="{sheet.name} ({sheet.id})">
+								{sheet.name} <span class="text-gray-400 dark:text-gray-500">({sheet.id.slice(0, 8)}...)</span>
+							</span>
 						</label>
 					{/each}
+					{#if filteredSheets.length === 0 && sheetSearchQuery}
+						<p class="text-xs text-gray-500 dark:text-gray-400 italic px-2">No matching sheets</p>
+					{/if}
 				</div>
 			{/if}
 		</div>
+
 	</div>
 </aside>
 
