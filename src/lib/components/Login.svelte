@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
-	import { parseTenantUrl, createAuthConfig, loadQlikAPI, getOAuthRedirectUri, getOAuthScopes } from '$lib/utils/qlik-auth';
+	import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
 	
 	let tenantUrl = $state('');
 	let isLoading = $state(false);
@@ -89,35 +89,9 @@
 					throw new Error(`Unexpected response status: ${response.status}`);
 				}
 			} catch (err: any) {
-				// If we get a 401/403, manually trigger OAuth redirect
-				// The Qlik API might not automatically redirect in all cases
-				if (err.message?.includes('401') || err.message?.includes('403') || err.message?.includes('unauthorized') || err.status === 401 || err.status === 403) {
-					// Construct OAuth URL manually
-					const redirectUri = encodeURIComponent(getOAuthRedirectUri());
-					const scope = encodeURIComponent(getOAuthScopes());
-					
-					// Determine orchestration domain based on tenant domain
-					let orchestrationDomain = tenantInfo.domain;
-					if (tenantInfo.domain.includes('us.qlikcloud.com')) {
-						orchestrationDomain = 'orchestration.us.qlikcloud.com';
-					} else if (tenantInfo.domain.includes('eu.qlikcloud.com')) {
-						orchestrationDomain = 'orchestration.eu.qlikcloud.com';
-					} else if (tenantInfo.domain.includes('us.qlik-stage.com')) {
-						orchestrationDomain = 'orchestration.us.qlik-stage.com';
-					} else if (tenantInfo.domain.includes('eu.qlik-stage.com')) {
-						orchestrationDomain = 'orchestration.eu.qlik-stage.com';
-					}
-					
-					const state = encodeURIComponent(Date.now().toString());
-					const oauthUrl = `https://${orchestrationDomain}/oauth/authorize?client_id=${tenantInfo.clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
-					
-					// Redirect to OAuth
-					window.location.href = oauthUrl;
-					return; // Exit function as we're redirecting
-				} else {
-					// Other errors should be shown to user
-					throw err;
-				}
+				// Rethrow - the Qlik API should handle OAuth automatically.
+				// If we get auth errors here, something is misconfigured.
+				throw err;
 			}
 		} catch (err: any) {
 			console.error('Login error:', err);
