@@ -5,6 +5,7 @@
   import { authStore } from '$lib/stores/auth';
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
+  import { base } from '$app/paths';
   
   let isAuthenticated = $state(false);
   let isCheckingAuth = $state(true);
@@ -19,6 +20,70 @@
     
     // Check if we're returning from OAuth callback
     if (typeof window !== 'undefined') {
+      // Check for tenant query parameter FIRST - this takes priority
+      const urlParams = new URLSearchParams(window.location.search);
+      const tenantParam = urlParams.get('tenant');
+      
+      if (tenantParam) {
+        const newTenantUrl = tenantParam.trim();
+        
+        // Normalize tenant URLs for comparison (remove protocol, trailing slashes)
+        const normalizeTenantUrl = (url: string): string => {
+          return url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+        };
+        
+        // Get current tenant from auth store or localStorage
+        let currentTenantUrl: string | null = null;
+        
+        // Check auth store first
+        const storeUnsubscribe = authStore.subscribe(state => {
+          if (state.tenantUrl) {
+            currentTenantUrl = state.tenantUrl;
+          }
+        });
+        storeUnsubscribe();
+        
+        // Fallback to localStorage if not in store
+        if (!currentTenantUrl) {
+          currentTenantUrl = localStorage.getItem('currentTenantUrl');
+        }
+        
+        // Compare tenants (normalized)
+        const normalizedNewTenant = normalizeTenantUrl(newTenantUrl);
+        const normalizedCurrentTenant = currentTenantUrl ? normalizeTenantUrl(currentTenantUrl) : null;
+        
+        // If different tenant, logout first and clear everything
+        if (normalizedCurrentTenant && normalizedNewTenant !== normalizedCurrentTenant) {
+          // Logout from current tenant
+          authStore.logout();
+          // Clear currentTenantUrl from localStorage
+          localStorage.removeItem('currentTenantUrl');
+          // Clear any Qlik API tokens
+          localStorage.removeItem('qlik-access-token');
+          sessionStorage.removeItem('qlik-access-token');
+          // Clear any other Qlik-related storage
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('qlik-') || key.startsWith('@qlik/')) {
+              localStorage.removeItem(key);
+            }
+          });
+          Object.keys(sessionStorage).forEach(key => {
+            if (key.startsWith('qlik-') || key.startsWith('@qlik/')) {
+              sessionStorage.removeItem(key);
+            }
+          });
+          // Clear cached Qlik API instance
+          if ((window as any).qlikApi) {
+            delete (window as any).qlikApi;
+          }
+          // Set isAuthenticated to false to show login page
+          isAuthenticated = false;
+          isCheckingAuth = false;
+          return unsubscribe;
+        }
+      }
+      
+      // Now check for existing session (only if no tenant parameter or same tenant)
       const storedTenantUrl = localStorage.getItem('currentTenantUrl');
       if (storedTenantUrl) {
         // Check if we just returned from OAuth callback
@@ -41,7 +106,35 @@
   function handleLogout() {
     authStore.logout();
     if (typeof window !== 'undefined') {
+      // Clear all Qlik-related storage
       localStorage.removeItem('currentTenantUrl');
+      localStorage.removeItem('qlik-tenant-history');
+      
+      // Clear all Qlik-related localStorage keys
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('qlik-') || key.startsWith('@qlik/')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      // Clear all Qlik-related sessionStorage keys
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('qlik-') || key.startsWith('@qlik/')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+      
+      // Clear cached Qlik API instance
+      if ((window as any).qlikApi) {
+        delete (window as any).qlikApi;
+      }
+      
+      // Reset auth checking state
+      isCheckingAuth = false;
+      isAuthenticated = false;
+      
+      // Reload the page to ensure clean state (respecting base path)
+      window.location.href = base || '/';
     }
   }
   

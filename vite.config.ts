@@ -11,5 +11,16 @@ export default defineConfig({
 	preview: {
 		port: 3000,
 		host: 'localhost'
+	},
+	build: {
+		// Ensure proper cache busting with content hashes
+		rollupOptions: {
+			output: {
+				// Add timestamp to chunk filenames for better cache busting
+				entryFileNames: `assets/[name]-[hash].js`,
+				chunkFileNames: `assets/[name]-[hash].js`,
+				assetFileNames: `assets/[name]-[hash].[ext]`
+			}
+		}
 	}
 });

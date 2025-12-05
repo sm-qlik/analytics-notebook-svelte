@@ -961,8 +961,19 @@
 		return unsubscribe;
 	});
 
-	function performSearch() {
-		isSearching = true;
+	function performSearch(incremental: boolean = false) {
+		// Only show searching spinner if:
+		// 1. Not incremental (user changed search/filters) - always show spinner
+		// 2. Incremental but no results yet - show spinner until we have results
+		// This prevents the table from flashing during incremental updates when results already exist
+		if (!incremental) {
+			isSearching = true;
+		} else if (searchResults.length === 0) {
+			// Only show spinner during incremental if we don't have results yet
+			isSearching = true;
+		}
+		// If incremental and we already have results, keep isSearching as is (don't change it)
+		
 		const query = searchQuery.trim();
 		const hasQuery = query.length > 0;
 		
@@ -998,11 +1009,23 @@
 			candidateResults = searchableIndex;
 		}
 		
-		const allResults: typeof searchResults = [];
-		unfilteredResults = [];
+		// When incrementally loading, append to existing results instead of clearing
+		// Only clear when user explicitly changes search/filters
+		const allResults: typeof searchResults = incremental ? [...searchResults] : [];
+		if (!incremental) {
+			unfilteredResults = [];
+		}
+		
+		// Track existing paths to avoid duplicates when appending incrementally
+		const existingPaths = incremental ? new Set(searchResults.map(r => r.path)) : new Set();
 		
 		for (const item of candidateResults) {
 			const sheetName = item.sheetName || item.sheet;
+			
+			// Skip if already in results (when appending incrementally)
+			if (incremental && existingPaths.has(item.path)) {
+				continue;
+			}
 			
 			// Filter by space first (if space filter is active)
 			if (hasSpaceFilters) {
@@ -1025,6 +1048,17 @@
 				}
 			}
 
+			if (hasTypeFilters) {
+				if (!item.objectType) {
+					continue;
+				}
+				if (!selectedTypes.has(item.objectType)) {
+					continue;
+				}
+			}
+
+			// Add to unfilteredResults (only if not incremental or not already present)
+			if (!incremental || !unfilteredResults.find(r => r.path === item.path)) {
 				unfilteredResults.push({
 					path: item.path,
 					object: item.object,
@@ -1038,13 +1072,7 @@
 					chartTitle: item.chartTitle || null,
 					chartUrl: item.chartUrl || null,
 					labels: item.labels || []
-				});			if (hasTypeFilters) {
-				if (!item.objectType) {
-					continue;
-				}
-				if (!selectedTypes.has(item.objectType)) {
-					continue;
-				}
+				});
 			}
 
 		allResults.push({
@@ -1093,7 +1121,7 @@
 		if (appsLoaded > 0) {
 			isSearching = true;
 			searchEffectTimeout = setTimeout(() => {
-				performSearch();
+				performSearch(shouldIncremental);
 			}, 200);
 		}
 		
@@ -1351,7 +1379,7 @@
 				onInput={handleSearchInput}
 			/>
 		
-			{#if isSearching}
+			{#if isSearching && searchResults.length === 0}
 				<div class="flex flex-col flex-1 min-h-0 items-center justify-center">
 					<div class="flex flex-col items-center gap-4">
 						<svg
