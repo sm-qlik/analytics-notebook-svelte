@@ -54,14 +54,17 @@
 	<div 
 		class="fixed inset-0 bg-black/50 z-40"
 		onclick={cancelRefresh}
-		onkeydown={(e) => e.key === 'Escape' && cancelRefresh()}
 		role="button"
 		tabindex="-1"
 	></div>
 	
 	<!-- Dialog -->
 	<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-		<div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+		<div 
+			class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200"
+			on:keydown={(e) => e.key === 'Escape' && cancelRefresh()}
+			tabindex="0"
+		>
 			<div class="flex items-start gap-4">
 				<div class="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
 					<svg class="h-5 w-5 text-amber-600 dark:text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
