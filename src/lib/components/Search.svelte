@@ -19,6 +19,7 @@
 		context: any;
 		file?: string;
 		app?: string;
+		appId?: string;
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -35,6 +36,7 @@
 		context: any;
 		file?: string;
 		app?: string;
+		appId?: string;
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -377,32 +379,14 @@
 			const shouldProcessAsString = (isQdimObject || isQmeasureObject) && typeof obj === 'string';
 
 			if (shouldProcessAsObject || shouldProcessAsString) {
-				const objectPath = path;
-				if (!processedObjects.has(objectPath)) {
-					processedObjects.set(objectPath, true);
+				// Include appId in the key since object paths are only unique within an app
+				const objectKey = `${appId}:${path}`;
+				if (!processedObjects.has(objectKey)) {
+					processedObjects.set(objectKey, true);
 					// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
 					const labels = shouldProcessAsString 
 						? extractLabels(null, parentObj, newContext)
 						: extractLabels(obj, parentObj, newContext);
-					
-					// Debug: log first few items to see what we're getting
-					if (index.length < 3) {
-						console.log('=== Label Extraction Debug ===');
-						console.log('Path:', path);
-						console.log('Obj type:', typeof obj);
-						console.log('Obj:', obj);
-						console.log('Obj keys:', typeof obj === 'object' && obj !== null ? Object.keys(obj) : 'N/A');
-						console.log('Obj.qLabel:', typeof obj === 'object' && obj !== null ? obj.qLabel : 'N/A');
-						console.log('Obj.qFieldLabels:', typeof obj === 'object' && obj !== null ? obj.qFieldLabels : 'N/A');
-						console.log('ParentObj:', parentObj);
-						console.log('ParentObj keys:', parentObj && typeof parentObj === 'object' ? Object.keys(parentObj) : 'N/A');
-						console.log('ParentObj.qDim:', parentObj && typeof parentObj === 'object' ? parentObj.qDim : 'N/A');
-						console.log('ParentObj.qMeasure:', parentObj && typeof parentObj === 'object' ? parentObj.qMeasure : 'N/A');
-						console.log('Context:', newContext);
-						console.log('Extracted labels:', labels);
-						console.log('Labels length:', labels.length);
-						console.log('==============================');
-					}
 					
 					let searchableText = extractSearchableFields(obj);
 					// Add labels to searchable text so they can be searched
@@ -420,7 +404,7 @@
 						chartId = obj.qInfo.qId;
 					}
 					index.push({
-						path: objectPath,
+						path: path,
 						object: obj,
 						objectType: newContext.objectType,
 						context: newContext,
@@ -483,11 +467,11 @@
 				sheetMeasures: data.sheetMeasures || []
 			};
 			
-			appStructure.masterDimensions.forEach((dim: any, index: number) => {
+			appStructure.masterDimensions.forEach((dim: any, idx: number) => {
 				if (dim.qDim) {
 					extractObjects(
 						dim.qDim,
-						`masterDimensions[${index}].qDim`,
+						`masterDimensions[${idx}].qDim`,
 						{ appName, appId, inMasterDimensions: true, inQdim: true },
 						appId,
 						appName,
@@ -496,11 +480,11 @@
 				}
 			});
 			
-			appStructure.masterMeasures.forEach((measure: any, index: number) => {
+			appStructure.masterMeasures.forEach((measure: any, idx: number) => {
 				if (measure.qMeasure) {
 					extractObjects(
 						measure.qMeasure,
-						`masterMeasures[${index}].qMeasure`,
+						`masterMeasures[${idx}].qMeasure`,
 						{ appName, appId, inMasterMeasures: true, inQmeasure: true },
 						appId,
 						appName,
@@ -509,7 +493,7 @@
 				}
 			});
 			
-			appStructure.sheetDimensions.forEach((dim: any, index: number) => {
+			appStructure.sheetDimensions.forEach((dim: any, idx: number) => {
 				const sheetId = dim.sheetId;
 				const sheetName = dim.sheetTitle || getSheetNameFromId(sheetId) || null;
 				const sheetUrl = dim.sheetUrl || null;
@@ -517,7 +501,7 @@
 				const chartUrl = dim.chartUrl || null;
 				
 				if (dim.qDef) {
-					// For inline qDef, we need to find the library reference if it exists for label extraction
+					// For inline dimensions, find the library reference if it exists for label extraction
 					let libraryDimForLabels = null;
 					if (dim.qLibraryId) {
 						libraryDimForLabels = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
@@ -525,7 +509,7 @@
 					// Pass the library dimension as parentObj so we can extract labels from it
 					extractObjects(
 						dim.qDef,
-						`sheetDimensions[${index}].qDef`,
+						`sheetDimensions[${idx}].qDef`,
 						{
 							appName,
 							appId,
@@ -542,11 +526,12 @@
 						libraryDimForLabels || dim // Use library dim if available for label extraction
 					);
 				} else if (dim.qLibraryId) {
+					// Library dimension reference - look up from master dimensions
 					const libraryDim = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
 					if (libraryDim?.qDim) {
 						extractObjects(
 							libraryDim.qDim,
-							`sheetDimensions[${index}].qDef`,
+							`sheetDimensions[${idx}].qDef`,
 							{
 								appName,
 								appId,
@@ -566,7 +551,7 @@
 				}
 			});
 			
-			appStructure.sheetMeasures.forEach((measure: any, index: number) => {
+			appStructure.sheetMeasures.forEach((measure: any, idx: number) => {
 				const sheetId = measure.sheetId;
 				const sheetName = measure.sheetTitle || getSheetNameFromId(sheetId) || null;
 				const sheetUrl = measure.sheetUrl || null;
@@ -574,7 +559,7 @@
 				const chartUrl = measure.chartUrl || null;
 				
 				if (measure.qDef) {
-					// For inline qDef, we need to find the library reference if it exists for label extraction
+					// For inline measures, find the library reference if it exists for label extraction
 					let libraryMeasureForLabels = null;
 					if (measure.qLibraryId) {
 						libraryMeasureForLabels = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
@@ -582,7 +567,7 @@
 					// Pass the library measure as parentObj so we can extract labels from it
 					extractObjects(
 						measure.qDef,
-						`sheetMeasures[${index}].qDef`,
+						`sheetMeasures[${idx}].qDef`,
 						{
 							appName,
 							appId,
@@ -599,11 +584,12 @@
 						libraryMeasureForLabels || measure // Use library measure if available for label extraction
 					);
 				} else if (measure.qLibraryId) {
+					// Library measure reference - look up from master measures
 					const libraryMeasure = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
 					if (libraryMeasure?.qMeasure) {
 						extractObjects(
 							libraryMeasure.qMeasure,
-							`sheetMeasures[${index}].qDef`,
+							`sheetMeasures[${idx}].qDef`,
 							{
 								appName,
 								appId,
@@ -626,7 +612,7 @@
 
 		searchableIndex = index;
 
-		// Create a searchable labels string for each item for Fuse.js
+		// Create searchable labels string for Fuse.js full-text search
 		const indexWithLabelsString = index.map(item => ({
 			...item,
 			labelsString: item.labels.join(' ')
@@ -675,7 +661,6 @@
 			const { auth } = qlikApi;
 			auth.setDefaultHostConfig(authConfig);
 			isAuthConfigured = true;
-			console.log('Qlik API auth configured for:', tenantUrl);
 		}
 		
 		return { qlikApi, tenantUrl };
@@ -685,16 +670,12 @@
 		try {
 			const { qlikApi } = await ensureAuthConfigured();
 			
-			// Check if spaces API is available
-			console.log('Qlik API keys:', Object.keys(qlikApi));
 			if (!qlikApi.spaces) {
-				console.warn('Spaces API not available in this Qlik API version. Available APIs:', Object.keys(qlikApi));
 				spaces = [];
 				return;
 			}
 			
 			const { spaces: spacesApi } = qlikApi;
-			console.log('Spaces API methods:', Object.keys(spacesApi));
 			
 			const spacesResponse = await spacesApi.getSpaces();
 			if (spacesResponse.status !== 200) {
@@ -702,18 +683,15 @@
 			}
 			
 			const allSpaces = spacesResponse.data?.data || [];
-			console.log('Loaded spaces:', allSpaces);
 			spaces = allSpaces
 				.map((space: any, index: number) => {
-					// Try multiple possible ID fields
 					const id = space.resourceId || space.id || space.spaceId || `space-${index}`;
 					return {
 						name: space.name || space.resourceId || space.id || `Space ${index + 1}`,
 						id: id
 					};
 				})
-				.filter((space: any) => space.id && space.id !== 'undefined'); // Filter out any spaces without a valid ID
-			console.log('Mapped spaces:', spaces);
+				.filter((space: any) => space.id && space.id !== 'undefined');
 		} catch (err: any) {
 			console.error('Failed to load spaces:', err);
 			// Don't throw - spaces might not be available in all tenants
@@ -1028,7 +1006,7 @@
 			
 			// Filter by space first (if space filter is active)
 			if (hasSpaceFilters) {
-				const app = apps.find(a => a.name === item.app);
+				const app = apps.find(a => a.id === item.appId);
 				if (!app || !app.spaceId || !selectedSpaces.has(app.spaceId)) {
 					continue;
 				}
@@ -1076,6 +1054,7 @@
 			context: item.context,
 			file: item.file,
 			app: item.app,
+			appId: item.appId,
 			sheet: sheetName,
 			sheetName: sheetName,
 			sheetId: item.sheetId || null,
@@ -1163,14 +1142,12 @@
 	}
 
 	function toggleSpace(spaceId: string) {
-		console.log('Toggling space:', spaceId, 'Current selected:', Array.from(selectedSpaces));
 		const newSet = createNewSet(selectedSpaces);
 		if (newSet.has(spaceId)) {
 			newSet.delete(spaceId);
 		} else {
 			newSet.add(spaceId);
 		}
-		console.log('New selected:', Array.from(newSet));
 		selectedSpaces = newSet;
 	}
 
