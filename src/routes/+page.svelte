@@ -214,11 +214,16 @@
 			
 			{#if isAuthenticated && authState}
 				<div class="flex items-center gap-4">
-					{#if authState.tenantName}
-						<span class="text-sm text-gray-600 dark:text-gray-400 hidden sm:block">
-							{authState.tenantName}
-						</span>
-					{/if}
+				{#if authState.tenantName}
+					<a
+						href={authState.tenantUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="text-sm text-gray-600 dark:text-gray-400 hidden sm:block hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
+					>
+						{authState.tenantName}
+					</a>
+				{/if}
 					{#if authState.user?.name}
 						<span class="text-sm text-gray-600 dark:text-gray-400 hidden sm:block">
 							{authState.user.name}
