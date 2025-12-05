@@ -379,7 +379,11 @@
 			const shouldProcessAsString = (isQdimObject || isQmeasureObject) && typeof obj === 'string';
 
 			if (shouldProcessAsObject || shouldProcessAsString) {
-				// Include appId in the key since object paths are only unique within an app
+				// Include appId in the key since object paths are only unique within an app.
+				// If the same path exists in different apps, using only the path as a key would cause
+				// collisions and incorrect deduplication, leading to data from one app overwriting or
+				// being confused with data from another. Namespacing with appId ensures correctness
+				// by keeping objects from different apps distinct, even if their paths are identical.
 				const objectKey = `${appId}:${path}`;
 				if (!processedObjects.has(objectKey)) {
 					processedObjects.set(objectKey, true);
