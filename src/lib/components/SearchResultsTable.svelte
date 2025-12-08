@@ -21,7 +21,8 @@
 
 	let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl }: Props = $props();
 
-	const itemsPerPage = 20;
+	let itemsPerPage = $state(25);
+	const pageSizeOptions = [25, 50, 100, 200];
 
 	// Sorting state - support all columns
 	let sortColumn = $state<SortableColumn>(null);
@@ -81,6 +82,16 @@
 			sortDirection = 'asc';
 		}
 		if (currentPage > 1) {
+			onPageChange(1);
+		}
+	}
+
+	// Handle page size change - reset to page 1 if current page would be out of bounds
+	function handlePageSizeChange(newSize: number) {
+		itemsPerPage = newSize;
+		// Reset to page 1 if current page would be out of bounds with new page size
+		const newTotalPages = Math.ceil(sortedResults.length / newSize);
+		if (currentPage > newTotalPages && newTotalPages > 0) {
 			onPageChange(1);
 		}
 	}
@@ -182,7 +193,7 @@
 	// Only highlight when not currently typing (debounced query is set and highlighting is active)
 	const shouldHighlight = $derived.by(() => {
 		const query = debouncedQuery;
-		return isHighlighting && query.length >= 2 && sortedAndPaginatedResults.length > 0 && sortedAndPaginatedResults.length <= 20;
+		return isHighlighting && query.length >= 2 && sortedAndPaginatedResults.length > 0 && sortedAndPaginatedResults.length <= itemsPerPage;
 	});
 	
 	// Cache for highlighted text (limited size)
@@ -596,42 +607,44 @@
 										{@html highlightText(definition, debouncedQuery)}
 									</div>
 									{#if definition !== 'N/A'}
-										<button
-											type="button"
-											onclick={() => onCopyToClipboard(definition, `${result.path}-${result.app}`)}
-											class="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors mt-0.5"
-											title="Copy definition to clipboard"
-										>
-											{#if copiedDefinitionId === `${result.path}-${result.app}`}
-												<svg
-													class="w-4 h-4 text-green-600 dark:text-green-400"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M5 13l4 4L19 7"
-													/>
-												</svg>
-											{:else}
-												<svg
-													class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-													/>
-												</svg>
-											{/if}
-										</button>
+										<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+											<button
+												type="button"
+												onclick={() => onCopyToClipboard(definition, getCopyId(result, 'definition'))}
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Copy definition to clipboard"
+											>
+												{#if copiedDefinitionId === getCopyId(result, 'definition')}
+													<svg
+														class="w-4 h-4 text-green-600 dark:text-green-400"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M5 13l4 4L19 7"
+														/>
+													</svg>
+												{:else}
+													<svg
+														class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+														/>
+													</svg>
+												{/if}
+											</button>
+										</div>
 									{/if}
 								</div>
 							</td>
@@ -858,8 +871,25 @@
 						Next
 					</button>
 				</div>
-				<div class="text-sm text-gray-600 dark:text-gray-400">
-					Showing {sortedResults.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0} to {Math.min(currentPage * itemsPerPage, sortedResults.length)} of {sortedResults.length} results
+				<div class="flex items-center gap-4">
+					<div class="flex items-center gap-2">
+						<label for="page-size-select" class="text-sm text-gray-600 dark:text-gray-400">
+							Items per page:
+						</label>
+						<select
+							id="page-size-select"
+							value={itemsPerPage}
+							onchange={(e) => handlePageSizeChange(Number((e.target as HTMLSelectElement).value))}
+							class="pl-2 pr-8 py-1 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27none%27 viewBox=%270 0 20 20%27%3E%3Cpath stroke=%27%236b7280%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 stroke-width=%271.5%27 d=%27M6 8l4 4 4-4%27/%3E%3C/svg%3E')] bg-[length:1rem_1rem] bg-no-repeat bg-[right_0.5rem_center] dark:bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27none%27 viewBox=%270 0 20 20%27%3E%3Cpath stroke=%27%239ca3af%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 stroke-width=%271.5%27 d=%27M6 8l4 4 4-4%27/%3E%3C/svg%3E')]"
+						>
+							{#each pageSizeOptions as option}
+								<option value={option}>{option}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="text-sm text-gray-600 dark:text-gray-400">
+						Showing {sortedResults.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0} to {Math.min(currentPage * itemsPerPage, sortedResults.length)} of {sortedResults.length} results
+					</div>
 				</div>
 			</div>
 			{/if}
