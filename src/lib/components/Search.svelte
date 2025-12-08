@@ -59,6 +59,7 @@
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string }>>([]);
 	let loadingAppIds = $state<Set<string>>(new Set());
 	let currentTenantHostname = $state('');
+	let currentTenantUrl = $state<string | null>(null);
 	let hasNewDataPending = $state(false);
 	let lastRefreshedAppsCount = $state(0);
 	let isAuthConfigured = $state(false);
@@ -70,28 +71,22 @@
 		return new Set(oldSet);
 	}
 	
-	// Calculate paginated results
-	const paginatedResults = $derived.by(() => {
-		const startIndex = (currentPage - 1) * itemsPerPage;
-		const endIndex = startIndex + itemsPerPage;
-		return searchResults.slice(startIndex, endIndex);
-	});
+	// Pagination is now handled in SearchResultsTable component
 	
 	const totalPages = $derived(Math.ceil(searchResults.length / itemsPerPage));
 	
 	function goToPage(page: number) {
-		if (page >= 1 && page <= totalPages) {
-			currentPage = page;
-		}
+		// Page validation is handled by SearchResultsTable component
+		currentPage = page;
 	}
 	
 	function goToNextPage() {
-		if (currentPage < totalPages) {
-			currentPage++;
-		}
+		// Page validation is handled by SearchResultsTable component
+		currentPage++;
 	}
 	
 	function goToPreviousPage() {
+		// Page validation is handled by SearchResultsTable component
 		if (currentPage > 1) {
 			currentPage--;
 		}
@@ -1170,6 +1165,7 @@
 		const unsubscribe = authStore.subscribe(state => {
 			// Extract hostname from tenant URL for keying purposes
 			if (state.tenantUrl) {
+				currentTenantUrl = state.tenantUrl;
 				try {
 					const url = new URL(state.tenantUrl);
 					currentTenantHostname = url.hostname;
@@ -1183,6 +1179,7 @@
 				}
 				previousTenantUrl = state.tenantUrl;
 			} else {
+				currentTenantUrl = null;
 				currentTenantHostname = '';
 				// Reset auth config if logged out
 				isAuthConfigured = false;
@@ -1754,7 +1751,7 @@
 					</div>
 				{:else}
 					<SearchResultsTable
-					results={paginatedResults}
+					results={searchResults}
 					totalResults={searchResults.length}
 					currentPage={currentPage}
 					totalPages={totalPages}
@@ -1765,6 +1762,7 @@
 					onExportToExcel={exportToExcel}
 					onCopyToClipboard={copyToClipboard}
 					copiedDefinitionId={copiedDefinitionId}
+					tenantUrl={currentTenantUrl}
 					/>
 				{/if}
 			</div>
