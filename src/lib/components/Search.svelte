@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
-	import { loadQlikAPI, parseTenantUrl, createAuthConfig } from '$lib/utils/qlik-auth';
+	import { loadQlikAPI, configureQlikAuthOnce, resetAuthConfiguration } from '$lib/utils/qlik-auth';
 	import { EngineInterface } from '$lib/utils/engine-interface';
 	import Fuse from 'fuse.js';
 	import * as XLSX from 'xlsx';
@@ -873,19 +873,16 @@
 		}
 		
 		const tenantUrl = currentAuthState.tenantUrl;
-		const qlikApi = await loadQlikAPI();
 		
-		// Only configure auth once per session
-		if (!isAuthConfigured) {
-			const tenantInfo = parseTenantUrl(tenantUrl);
-			const authConfig = createAuthConfig(tenantInfo);
-			const { auth } = qlikApi;
-			auth.setDefaultHostConfig(authConfig);
-			isAuthConfigured = true;
-		}
+		// Configure auth once per tenant (prevents multiple setDefaultHostConfig calls)
+		await configureQlikAuthOnce(tenantUrl);
+		
+		const qlikApi = await loadQlikAPI();
+		isAuthConfigured = true;
 		
 		return { qlikApi, tenantUrl };
 	}
+	
 
 	async function loadSpaces() {
 		try {
@@ -995,7 +992,10 @@
 				let session: any = null;
 				
 				try {
-					session = await qix.openAppSession({ appId });
+					// Open app session without loading data
+					session = await qix.openAppSession({ appId, withoutData: true });
+					
+					// Get the app document from the session
 					const app = await session.getDoc();
 					const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
 					
@@ -1033,8 +1033,9 @@
 						});
 					}
 				} catch (err: any) {
+					console.warn(`Failed to load app ${appName}:`, err);
 				} finally {
-					// Always close the session
+					// Close the session immediately after loading data to free up websocket connections
 					if (session) {
 						try {
 							await session.close();
@@ -1092,7 +1093,10 @@
 				currentApp: appName 
 			};
 			
-			session = await qix.openAppSession({ appId });
+			// Open app session without loading data
+			session = await qix.openAppSession({ appId, withoutData: true });
+			
+			// Get the app document from the session
 			const app = await session.getDoc();
 			const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
 			
@@ -1120,12 +1124,12 @@
 		} catch (err: any) {
 			console.warn(`Failed to load app ${appId}:`, err);
 		} finally {
-			// Always close the session
+			// Close the session immediately after loading data to free up websocket connections
 			if (session) {
 				try {
 					await session.close();
 				} catch (closeErr) {
-					console.warn('Failed to close session:', closeErr);
+					console.warn(`Failed to close session for ${appId}:`, closeErr);
 				}
 			}
 			const newLoadingIds = new Set(loadingAppIds);
@@ -1176,6 +1180,8 @@
 				// Reset auth config if tenant URL changed
 				if (previousTenantUrl && previousTenantUrl !== state.tenantUrl) {
 					isAuthConfigured = false;
+					// Reset auth configuration to allow reconfiguration for new tenant
+					resetAuthConfiguration();
 				}
 				previousTenantUrl = state.tenantUrl;
 			} else {

@@ -141,12 +141,13 @@
   async function checkExistingSession(tenantUrl: string) {
     try {
       isCheckingAuth = true;
-      const tenantInfo = parseTenantUrl(tenantUrl);
-      const qlikApi = await loadQlikAPI();
-      const { auth, items, users, tenants } = qlikApi;
+      const { configureQlikAuthOnce } = await import('$lib/utils/qlik-auth');
       
-      const authConfig = createAuthConfig(tenantInfo);
-      auth.setDefaultHostConfig(authConfig);
+      // Configure auth once (prevents multiple setDefaultHostConfig calls)
+      await configureQlikAuthOnce(tenantUrl);
+      
+      const qlikApi = await loadQlikAPI();
+      const { items, users, tenants } = qlikApi;
       
       // Try to get items to check authentication with timeout
       const timeoutPromise = new Promise((_, reject) => 

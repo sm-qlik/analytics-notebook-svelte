@@ -65,13 +65,13 @@
 				localStorage.setItem('qlik-tenant-history', JSON.stringify(updatedHistory));
 			}
 			
-			// Load Qlik API
-			const qlikApi = await loadQlikAPI();
-			const { auth, items, users, tenants } = qlikApi;
-			
-			// Configure auth
-			const authConfig = createAuthConfig(tenantInfo);
-			auth.setDefaultHostConfig(authConfig);
+		// Configure auth once (prevents multiple setDefaultHostConfig calls)
+		const { configureQlikAuthOnce } = await import('$lib/utils/qlik-auth');
+		await configureQlikAuthOnce(tenantInfo.tenantUrl);
+		
+		// Load Qlik API
+		const qlikApi = await loadQlikAPI();
+		const { items, users, tenants } = qlikApi;
 			
 			// Check if we're returning from OAuth callback
 			// The Qlik API will automatically redirect to OAuth if not authenticated
