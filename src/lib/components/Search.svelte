@@ -1001,12 +1001,12 @@
 				return;
 			}
 			
-			const { spaces: spacesApi } = qlikApi;
-			
-			const spacesResponse = await spacesApi.getSpaces();
-			if (spacesResponse.status !== 200) {
-				throw new Error(`Failed to get spaces: ${spacesResponse.status}`);
-			}
+		const { spaces: spacesApi } = qlikApi;
+		
+		const spacesResponse = await spacesApi.getSpaces({ limit: 100 });
+		if (spacesResponse.status !== 200) {
+			throw new Error(`Failed to get spaces: ${spacesResponse.status}`);
+		}
 			
 			const allSpaces = spacesResponse.data?.data || [];
 			spaces = allSpaces
