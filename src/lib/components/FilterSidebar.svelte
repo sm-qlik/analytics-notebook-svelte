@@ -61,6 +61,68 @@
 	let searchQuery = $state('');
 	let sheetSearchQuery = $state('');
 
+	// Resizable sidebar width
+	const MIN_WIDTH = 200;
+	const MAX_WIDTH = 600;
+	const DEFAULT_WIDTH = 256; // w-64 = 256px
+	
+	let sidebarWidth = $state(DEFAULT_WIDTH);
+	let isResizing = $state(false);
+	let resizeStartX = $state(0);
+	let resizeStartWidth = $state(0);
+
+	// Load saved width from localStorage on mount
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			const savedWidth = localStorage.getItem('filterSidebarWidth');
+			if (savedWidth) {
+				const width = parseInt(savedWidth, 10);
+				if (width >= MIN_WIDTH && width <= MAX_WIDTH) {
+					sidebarWidth = width;
+				}
+			}
+		}
+	});
+
+	function handleResizeStart(e: MouseEvent) {
+		if (isCollapsed) return;
+		isResizing = true;
+		resizeStartX = e.clientX;
+		resizeStartWidth = sidebarWidth;
+		document.addEventListener('mousemove', handleResizeMove);
+		document.addEventListener('mouseup', handleResizeEnd);
+		e.preventDefault();
+	}
+
+	function handleResizeMove(e: MouseEvent) {
+		if (!isResizing) return;
+		const deltaX = e.clientX - resizeStartX;
+		const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, resizeStartWidth + deltaX));
+		sidebarWidth = newWidth;
+	}
+
+	function handleResizeEnd() {
+		if (isResizing) {
+			isResizing = false;
+			// Save to localStorage
+			if (typeof window !== 'undefined') {
+				localStorage.setItem('filterSidebarWidth', sidebarWidth.toString());
+			}
+			document.removeEventListener('mousemove', handleResizeMove);
+			document.removeEventListener('mouseup', handleResizeEnd);
+		}
+	}
+
+	// Cleanup event listeners on unmount
+	$effect(() => {
+		return () => {
+			if (isResizing) {
+				document.removeEventListener('mousemove', handleResizeMove);
+				document.removeEventListener('mouseup', handleResizeEnd);
+			}
+		};
+	});
+
 	// Filtered spaces and apps based on search query
 	let filteredSpaces = $derived(
 		searchQuery.trim()
@@ -85,7 +147,7 @@
 	);
 </script>
 
-<div class="relative flex-shrink-0 {isCollapsed ? 'w-8' : ''}">
+<div class="relative flex-shrink-0 {isCollapsed ? 'w-8' : ''}" style={isCollapsed ? '' : `width: ${sidebarWidth}px`}>
 	<!-- Toggle Button at the top - always visible, flush against border -->
 	<button
 		type="button"
@@ -104,7 +166,7 @@
 		</svg>
 	</button>
 	
-	<aside class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 {isCollapsed ? 'w-0 overflow-hidden' : 'w-64 overflow-x-hidden'}">
+	<aside class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 {isCollapsed ? 'w-0 overflow-hidden' : 'overflow-x-hidden'}" style={isCollapsed ? '' : `width: ${sidebarWidth}px`}>
 	{#if !isCollapsed}
 		<div class="p-4 border-b border-gray-200 dark:border-gray-700">
 			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Filters</h2>
@@ -460,5 +522,16 @@
 		</div>
 	{/if}
 	</aside>
+	
+	<!-- Resize Handle -->
+	{#if !isCollapsed}
+		<button
+			type="button"
+			aria-label="Resize filter panel"
+			onmousedown={handleResizeStart}
+			class="absolute top-8 right-0 w-1 h-[calc(100%-2rem)] cursor-col-resize hover:bg-blue-500 dark:hover:bg-blue-400 transition-colors z-10 {isResizing ? 'bg-blue-500 dark:bg-blue-400' : ''} border-0 p-0 bg-transparent"
+			title="Drag to resize"
+		></button>
+	{/if}
 </div>
 
