@@ -257,7 +257,7 @@
 				if (selectedSpaces.size === 0) return true;
 				// Check if "Personal" is selected - match apps with no spaceId
 				const personalSelected = selectedSpaces.has(PERSONAL_SPACE_ID);
-				const appHasNoSpace = !app.spaceId || app.spaceId === '';
+				const appHasNoSpace = !app.spaceId;
 				if (personalSelected && appHasNoSpace) return true;
 				// Check if app's space is selected
 				return app.spaceId && selectedSpaces.has(app.spaceId);
