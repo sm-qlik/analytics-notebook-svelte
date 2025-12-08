@@ -14,7 +14,7 @@
 		onToggleCollapse: () => void;
 		onToggleSpace: (spaceId: string) => void;
 		onToggleApp: (appId: string) => void;
-		onToggleSheet: (sheetName: string) => void;
+		onToggleSheet: (sheetId: string) => void;
 		onToggleSheetState: (state: string) => void;
 		onSelectAllSpaces: () => void;
 		onDeselectAllSpaces: () => void;

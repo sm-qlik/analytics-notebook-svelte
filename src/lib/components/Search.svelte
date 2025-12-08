@@ -1533,11 +1533,12 @@
 		
 		if (wasSelected) {
 			newSet.delete(appId);
+			// Remove sheets by sheetId (not sheetName) since selectedSheets stores sheetId values
 			const sheetsToRemove = sheets
 				.filter((sheet) => sheet.appId === appId)
-				.map((sheet) => sheet.name);
+				.map((sheet) => sheet.sheetId);
 			const newSheetsSet = createNewSet(selectedSheets);
-			sheetsToRemove.forEach((sheetName) => newSheetsSet.delete(sheetName));
+			sheetsToRemove.forEach((sheetId) => newSheetsSet.delete(sheetId));
 			selectedSheets = newSheetsSet;
 		} else {
 			newSet.add(appId);
@@ -1546,12 +1547,12 @@
 		selectedApps = newSet;
 	}
 
-	function toggleSheet(sheetName: string) {
+	function toggleSheet(sheetId: string) {
 		const newSet = createNewSet(selectedSheets);
-		if (newSet.has(sheetName)) {
-			newSet.delete(sheetName);
+		if (newSet.has(sheetId)) {
+			newSet.delete(sheetId);
 		} else {
-			newSet.add(sheetName);
+			newSet.add(sheetId);
 		}
 		selectedSheets = newSet;
 	}
