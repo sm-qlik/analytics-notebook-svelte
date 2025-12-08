@@ -120,6 +120,92 @@
 		return 'Private';
 	}
 
+	/**
+	 * Extracts sheet metadata (approved and published status) from an array of sheets.
+	 * @param sheets - Array of sheet objects from structureData
+	 * @returns Map of sheetId to metadata object
+	 */
+	function extractSheetMetadata(sheets: any[]): Map<string, { approved: boolean; published: boolean }> {
+		const metadata = new Map<string, { approved: boolean; published: boolean }>();
+		sheets.forEach((sheet: any) => {
+			const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+			if (sheetId) {
+				const approved = !!sheet.approved;
+				const published = !!sheet.published;
+				metadata.set(sheetId, { approved, published });
+			}
+		});
+		return metadata;
+	}
+
+	/**
+	 * Extracts sheet objects from structureData for a given app.
+	 * @param sheets - Array of sheet objects from structureData
+	 * @param appName - Name of the app
+	 * @param appId - ID of the app
+	 * @returns Array of sheet objects with name, app, appId, sheetId, approved, and published
+	 */
+	function extractSheetObjects(
+		sheets: any[],
+		appName: string,
+		appId: string
+	): Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> {
+		const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
+		sheets.forEach((sheet: any) => {
+			const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
+			const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+			if (sheetTitle && sheetId) {
+				const approved = !!sheet.approved;
+				const published = !!sheet.published;
+				newSheets.push({
+					name: sheetTitle,
+					app: appName,
+					appId: appId,
+					sheetId: sheetId,
+					approved,
+					published
+				});
+			}
+		});
+		return newSheets;
+	}
+
+	/**
+	 * Merges new sheet metadata into the existing metadata map, avoiding race conditions.
+	 * Reads current state right before updating to get latest changes from concurrent loads.
+	 * @param newMetadata - Map of new metadata to merge
+	 * @returns Updated metadata map
+	 */
+	function mergeSheetMetadata(
+		newMetadata: Map<string, { approved: boolean; published: boolean }>
+	): Map<string, { approved: boolean; published: boolean }> {
+		const currentMetadata = new Map(sheetMetadata);
+		newMetadata.forEach((value, key) => {
+			currentMetadata.set(key, value);
+		});
+		return currentMetadata;
+	}
+
+	/**
+	 * Processes sheets from structureData: extracts sheet objects and updates metadata.
+	 * @param structureData - Structure data containing sheets array
+	 * @param appName - Name of the app
+	 * @param appId - ID of the app
+	 */
+	function processSheets(structureData: any, appName: string, appId: string): void {
+		if (!structureData.sheets || !Array.isArray(structureData.sheets)) {
+			return;
+		}
+
+		// Extract and add sheet objects
+		const newSheets = extractSheetObjects(structureData.sheets, appName, appId);
+		sheets = [...sheets, ...newSheets];
+
+		// Extract and merge metadata
+		const newMetadata = extractSheetMetadata(structureData.sheets);
+		sheetMetadata = mergeSheetMetadata(newMetadata);
+	}
+
 	const availableSheets = $derived.by(() => {
 		const seen = new Set<string>();
 		const hasAppSelection = selectedApps.size > 0;
@@ -1030,38 +1116,7 @@
 					}];
 					qlikApps = updatedApps;
 					
-					if (structureData.sheets && Array.isArray(structureData.sheets)) {
-						const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
-						structureData.sheets.forEach((sheet: any) => {
-							const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
-							const sheetId = sheet?.qProperty?.qInfo?.qId || '';
-							if (sheetTitle && sheetId) {
-								const approved = !!sheet.approved;
-								const published = !!sheet.published;
-								newSheets.push({
-									name: sheetTitle,
-									app: appName,
-									appId: appId,
-									sheetId: sheetId,
-									approved,
-									published
-								});
-							}
-						});
-						sheets = [...sheets, ...newSheets];
-						// Merge new metadata with existing metadata to avoid race conditions
-						// Read current state right before updating to get latest changes from concurrent loads
-						const currentMetadata = new Map(sheetMetadata);
-						structureData.sheets.forEach((sheet: any) => {
-							const sheetId = sheet?.qProperty?.qInfo?.qId || '';
-							if (sheetId) {
-								const approved = !!sheet.approved;
-								const published = !!sheet.published;
-								currentMetadata.set(sheetId, { approved, published });
-							}
-						});
-						sheetMetadata = currentMetadata;
-					}
+					processSheets(structureData, appName, appId);
 					// Build index but don't trigger search - let the effect handle it
 					buildSearchableIndex();
 					// Trigger incremental search for this new app's data
@@ -1141,38 +1196,7 @@
 			
 			qlikApps = [...qlikApps, { id: appId, name: appName, data: structureData }];
 			
-			if (structureData.sheets && Array.isArray(structureData.sheets)) {
-				const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
-				structureData.sheets.forEach((sheet: any) => {
-					const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
-					const sheetId = sheet?.qProperty?.qInfo?.qId || '';
-					if (sheetTitle && sheetId) {
-						const approved = !!sheet.approved;
-						const published = !!sheet.published;
-						newSheets.push({
-							name: sheetTitle,
-							app: appName,
-							appId: appId,
-							sheetId: sheetId,
-							approved,
-							published
-						});
-					}
-				});
-				sheets = [...sheets, ...newSheets];
-				// Merge new metadata with existing metadata to avoid race conditions
-				// Read current state right before updating to get latest changes from concurrent loads
-				const currentMetadata = new Map(sheetMetadata);
-				structureData.sheets.forEach((sheet: any) => {
-					const sheetId = sheet?.qProperty?.qInfo?.qId || '';
-					if (sheetId) {
-						const approved = !!sheet.approved;
-						const published = !!sheet.published;
-						currentMetadata.set(sheetId, { approved, published });
-					}
-				});
-				sheetMetadata = currentMetadata;
-			}
+			processSheets(structureData, appName, appId);
 			buildSearchableIndex();
 			
 			loadAppDataInBackground();
