@@ -56,7 +56,8 @@
 	let apps = $state<Array<{ name: string; id: string; spaceId?: string }>>([]);
 	let appItems = $state<Array<{ resourceId: string; name: string; spaceId?: string }>>([]);
 	let spaces = $state<Array<{ name: string; id: string }>>([]);
-	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string }>>([]);
+	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }>>([]);
+	let sheetMetadata = $state<Map<string, { approved: boolean; published: boolean }>>(new Map());
 	let loadingAppIds = $state<Set<string>>(new Set());
 	let currentTenantHostname = $state('');
 	let currentTenantUrl = $state<string | null>(null);
@@ -99,6 +100,26 @@
 		return sheet ? sheet.name : null;
 	}
 
+	function getSheetState(sheetId: string | null): 'Public' | 'Community' | 'Private' | null {
+		if (!sheetId) return null;
+		const metadata = sheetMetadata.get(sheetId);
+		if (!metadata) {
+			// Fallback to sheet object if metadata not found
+			const sheet = sheets.find(s => s.sheetId === sheetId);
+			if (sheet) {
+				const approved = sheet.approved ?? false;
+				const published = sheet.published ?? false;
+				if (approved) return 'Public';
+				if (published) return 'Community';
+				return 'Private';
+			}
+			return null;
+		}
+		if (metadata.approved) return 'Public';
+		if (metadata.published) return 'Community';
+		return 'Private';
+	}
+
 	const availableSheets = $derived.by(() => {
 		const seen = new Set<string>();
 		const hasAppSelection = selectedApps.size > 0;
@@ -132,6 +153,7 @@
 	let selectedApps = $state(new Set<string>());
 	let selectedSheets = $state(new Set<string>());
 	let selectedTypes = $state(new Set<string>());
+	let selectedSheetStates = $state(new Set<string>());
 	
 	// Track which apps have been loaded (have data)
 	const loadedAppIds = $derived(new Set(qlikApps.map(a => a.id)));
@@ -1009,19 +1031,27 @@
 					qlikApps = updatedApps;
 					
 					if (structureData.sheets && Array.isArray(structureData.sheets)) {
-						const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string }> = [];
+						const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
+						const newMetadata = new Map(sheetMetadata);
 						structureData.sheets.forEach((sheet: any) => {
 							const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
-							if (sheetTitle) {
+							const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+							if (sheetTitle && sheetId) {
+								const approved = !!sheet.approved;
+								const published = !!sheet.published;
 								newSheets.push({
 									name: sheetTitle,
 									app: appName,
 									appId: appId,
-									sheetId: sheet?.qProperty?.qInfo?.qId || ''
+									sheetId: sheetId,
+									approved,
+									published
 								});
+								newMetadata.set(sheetId, { approved, published });
 							}
 						});
 						sheets = [...sheets, ...newSheets];
+						sheetMetadata = newMetadata;
 					}
 					// Build index but don't trigger search - let the effect handle it
 					buildSearchableIndex();
@@ -1103,19 +1133,27 @@
 			qlikApps = [...qlikApps, { id: appId, name: appName, data: structureData }];
 			
 			if (structureData.sheets && Array.isArray(structureData.sheets)) {
-				const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string }> = [];
+				const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
+				const newMetadata = new Map(sheetMetadata);
 				structureData.sheets.forEach((sheet: any) => {
 					const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
-					if (sheetTitle) {
+					const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+					if (sheetTitle && sheetId) {
+						const approved = !!sheet.approved;
+						const published = !!sheet.published;
 						newSheets.push({
 							name: sheetTitle,
 							app: appName,
 							appId: appId,
-							sheetId: sheet?.qProperty?.qInfo?.qId || ''
+							sheetId: sheetId,
+							approved,
+							published
 						});
+						newMetadata.set(sheetId, { approved, published });
 					}
 				});
 				sheets = [...sheets, ...newSheets];
+				sheetMetadata = newMetadata;
 			}
 			buildSearchableIndex();
 			
@@ -1160,6 +1198,8 @@
 		selectedApps = new Set();
 		selectedSheets = new Set();
 		selectedTypes = new Set();
+		selectedSheetStates = new Set();
+		sheetMetadata = new Map();
 		
 		await loadAppList();
 	}
@@ -1218,6 +1258,7 @@
 		const hasAppSelections = selectedApps.size > 0;
 		const hasSheetSelections = selectedSheets.size > 0;
 		const hasTypeSelections = selectedTypes.size > 0;
+		const hasSheetStateSelections = selectedSheetStates.size > 0;
 		
 		// Check if all items are selected (compare against total counts, not filtered available items)
 		const allSpacesSelected = hasSpaceSelections && selectedSpaces.size === spaces.length;
@@ -1225,13 +1266,15 @@
 		const allAppsSelected = hasAppSelections && selectedApps.size === apps.length;
 		const allSheetsSelected = hasSheetSelections && availableSheets.length > 0 && selectedSheets.size >= availableSheets.length;
 		const allTypesSelected = hasTypeSelections && selectedTypes.size === typeOptions.length;
+		const allSheetStatesSelected = hasSheetStateSelections && selectedSheetStates.size === 3; // Public, Community, Private
 		
 		const hasSpaceFilters = hasSpaceSelections && !allSpacesSelected;
 		const hasAppFilters = hasAppSelections && !allAppsSelected;
 		const hasSheetFilters = hasSheetSelections && (!hasAppSelections || !allSheetsSelected);
 		const hasTypeFilters = hasTypeSelections && !allTypesSelected;
+		const hasSheetStateFilters = hasSheetStateSelections && !allSheetStatesSelected;
 		
-		const hasAnySelections = hasSpaceSelections || hasAppSelections || hasSheetSelections || hasTypeSelections;
+		const hasAnySelections = hasSpaceSelections || hasAppSelections || hasSheetSelections || hasTypeSelections || hasSheetStateSelections;
 		
 		// Debug: log filter state
 		if (hasAppSelections) {
@@ -1308,6 +1351,13 @@
 				}
 			}
 
+			if (hasSheetStateFilters) {
+				const sheetState = getSheetState(item.sheetId);
+				if (!sheetState || !selectedSheetStates.has(sheetState)) {
+					continue;
+				}
+			}
+
 			// Add to unfilteredResults (only if not incremental or not already present)
 			if (!incremental || !unfilteredResults.find(r => r.path === item.path)) {
 				unfilteredResults.push({
@@ -1354,9 +1404,9 @@
 	
 	let searchEffectTimeout: ReturnType<typeof setTimeout> | null = null;
 	
-	// Track previous values to detect actual changes
-	let previousQuery = '';
-	let previousFilterSizes = { spaces: 0, apps: 0, sheets: 0, types: 0 };
+		// Track previous values to detect actual changes
+		let previousQuery = '';
+		let previousFilterSizes = { spaces: 0, apps: 0, sheets: 0, types: 0, sheetStates: 0 };
 	
 	// Effect for filter/query changes - triggers search when filters change
 	$effect(() => {
@@ -1366,6 +1416,7 @@
 		const appsSize = selectedApps.size;
 		const sheetsSize = selectedSheets.size;
 		const typesSize = selectedTypes.size;
+		const sheetStatesSize = selectedSheetStates.size;
 		
 		// Check if query or filters actually changed
 		const queryChanged = query !== previousQuery;
@@ -1373,7 +1424,8 @@
 			spacesSize !== previousFilterSizes.spaces ||
 			appsSize !== previousFilterSizes.apps ||
 			sheetsSize !== previousFilterSizes.sheets ||
-			typesSize !== previousFilterSizes.types;
+			typesSize !== previousFilterSizes.types ||
+			sheetStatesSize !== previousFilterSizes.sheetStates;
 		
 		// Reset page if query or filters changed
 		if (queryChanged || filtersChanged) {
@@ -1382,7 +1434,7 @@
 		}
 		
 		// Update filter sizes
-		previousFilterSizes = { spaces: spacesSize, apps: appsSize, sheets: sheetsSize, types: typesSize };
+		previousFilterSizes = { spaces: spacesSize, apps: appsSize, sheets: sheetsSize, types: typesSize, sheetStates: sheetStatesSize };
 		
 		// Only trigger search if something actually changed
 		if (!queryChanged && !filtersChanged) {
@@ -1547,6 +1599,24 @@
 		selectedTypes = new Set();
 	}
 
+	function toggleSheetState(state: string) {
+		const newSet = createNewSet(selectedSheetStates);
+		if (newSet.has(state)) {
+			newSet.delete(state);
+		} else {
+			newSet.add(state);
+		}
+		selectedSheetStates = newSet;
+	}
+
+	function selectAllSheetStates() {
+		selectedSheetStates = new Set(['Public', 'Community', 'Private']);
+	}
+
+	function deselectAllSheetStates() {
+		selectedSheetStates = new Set();
+	}
+
 	let copiedDefinitionId = $state<string | null>(null);
 
 	async function copyToClipboard(text: string, id: string) {
@@ -1610,6 +1680,7 @@
 		selectedSpaces={selectedSpaces}
 		{selectedApps}
 		{selectedSheets}
+		selectedSheetStates={selectedSheetStates}
 		{loadedAppIds}
 		{loadingAppIds}
 		tenantHostname={currentTenantHostname}
@@ -1618,12 +1689,15 @@
 		onToggleSpace={toggleSpace}
 		onToggleApp={toggleApp}
 		onToggleSheet={toggleSheet}
+		onToggleSheetState={toggleSheetState}
 		onSelectAllSpaces={selectAllSpaces}
 		onDeselectAllSpaces={deselectAllSpaces}
 		onSelectAllApps={selectAllApps}
 		onDeselectAllApps={deselectAllApps}
 		onSelectAllSheets={selectAllSheets}
 		onDeselectAllSheets={deselectAllSheets}
+		onSelectAllSheetStates={selectAllSheetStates}
+		onDeselectAllSheetStates={deselectAllSheetStates}
 	/>
 
 	<div class="flex-1 flex flex-col min-h-0 min-w-0">
