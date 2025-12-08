@@ -242,14 +242,24 @@
 			.sort((a, b) => a.name.localeCompare(b.name));
 	});
 	
-	const availableSpaces = $derived(
-		[...spaces].sort((a, b) => a.name.localeCompare(b.name))
-	);
+	// Special ID for "Personal" space (apps with no spaceId)
+	const PERSONAL_SPACE_ID = '__personal__';
+	
+	const availableSpaces = $derived.by(() => {
+		const sortedSpaces = [...spaces].sort((a, b) => a.name.localeCompare(b.name));
+		// Always add "Personal" at the top for apps without a spaceId
+		return [{ name: 'Personal', id: PERSONAL_SPACE_ID }, ...sortedSpaces];
+	});
 	
 	const availableApps = $derived(
 		apps
 			.filter((app) => {
 				if (selectedSpaces.size === 0) return true;
+				// Check if "Personal" is selected - match apps with no spaceId
+				const personalSelected = selectedSpaces.has(PERSONAL_SPACE_ID);
+				const appHasNoSpace = !app.spaceId;
+				if (personalSelected && appHasNoSpace) return true;
+				// Check if app's space is selected
 				return app.spaceId && selectedSpaces.has(app.spaceId);
 			})
 			.sort((a, b) => a.name.localeCompare(b.name))
@@ -1325,7 +1335,8 @@
 		const hasSheetStateSelections = selectedSheetStates.size > 0;
 		
 		// Check if all items are selected (compare against total counts, not filtered available items)
-		const allSpacesSelected = hasSpaceSelections && selectedSpaces.size === spaces.length;
+		// Add 1 for the Personal space
+		const allSpacesSelected = hasSpaceSelections && selectedSpaces.size === (spaces.length + 1);
 		// For apps, compare against the total apps list, not filtered availableApps
 		const allAppsSelected = hasAppSelections && selectedApps.size === apps.length;
 		const allSheetsSelected = hasSheetSelections && availableSheets.length > 0 && selectedSheets.size >= availableSheets.length;
@@ -1390,7 +1401,15 @@
 			// Filter by space first (if space filter is active)
 			if (hasSpaceFilters) {
 				const app = apps.find(a => a.id === item.appId);
-				if (!app || !app.spaceId || !selectedSpaces.has(app.spaceId)) {
+				if (!app) {
+					continue;
+				}
+				// Check if "Personal" is selected and app has no space
+				const personalSelected = selectedSpaces.has(PERSONAL_SPACE_ID);
+				const appHasNoSpace = !app.spaceId;
+				// Only allow apps through the space filter if "Personal" is selected and app has no space,
+				// otherwise skip if the app's space is not selected
+				if (!(personalSelected && appHasNoSpace) && (!app.spaceId || !selectedSpaces.has(app.spaceId))) {
 					continue;
 				}
 			}
@@ -1625,7 +1644,8 @@
 	}
 
 	function selectAllSpaces() {
-		selectedSpaces = new Set(spaces.map((s) => s.id));
+		// Include Personal space and all regular spaces
+		selectedSpaces = new Set([PERSONAL_SPACE_ID, ...spaces.map((s) => s.id)]);
 	}
 
 	function deselectAllSpaces() {
