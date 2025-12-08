@@ -19,7 +19,7 @@
 		context: any;
 		file?: string;
 		app?: string;
-		appId?: string;
+		appId: string; // Required - all data comes from apps
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -36,7 +36,7 @@
 		context: any;
 		file?: string;
 		app?: string;
-		appId?: string;
+		appId: string; // Required - all data comes from apps
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -59,6 +59,9 @@
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }>>([]);
 	let sheetMetadata = $state<Map<string, { approved: boolean; published: boolean }>>(new Map());
 	let loadingAppIds = $state<Set<string>>(new Set());
+	
+	// Mutex for serializing sheet metadata updates to prevent race conditions
+	let metadataUpdateQueue: Promise<void> = Promise.resolve();
 	let currentTenantHostname = $state('');
 	let currentTenantUrl = $state<string | null>(null);
 	let hasNewDataPending = $state(false);
@@ -118,6 +121,109 @@
 		if (metadata.approved) return 'Public';
 		if (metadata.published) return 'Community';
 		return 'Private';
+	}
+
+	/**
+	 * Extracts sheet metadata (approved and published status) from an array of sheets.
+	 * @param sheets - Array of sheet objects from structureData
+	 * @returns Map of sheetId to metadata object
+	 */
+	function extractSheetMetadata(sheets: any[]): Map<string, { approved: boolean; published: boolean }> {
+		const metadata = new Map<string, { approved: boolean; published: boolean }>();
+		sheets.forEach((sheet: any) => {
+			const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+			if (sheetId) {
+				const approved = !!sheet.approved;
+				const published = !!sheet.published;
+				metadata.set(sheetId, { approved, published });
+			}
+		});
+		return metadata;
+	}
+
+	/**
+	 * Extracts sheet objects from structureData for a given app.
+	 * @param sheets - Array of sheet objects from structureData
+	 * @param appName - Name of the app
+	 * @param appId - ID of the app
+	 * @returns Array of sheet objects with name, app, appId, sheetId, approved, and published
+	 */
+	function extractSheetObjects(
+		sheets: any[],
+		appName: string,
+		appId: string
+	): Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> {
+		const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
+		sheets.forEach((sheet: any) => {
+			const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
+			const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+			if (sheetTitle && sheetId) {
+				const approved = !!sheet.approved;
+				const published = !!sheet.published;
+				newSheets.push({
+					name: sheetTitle,
+					app: appName,
+					appId: appId,
+					sheetId: sheetId,
+					approved,
+					published
+				});
+			}
+		});
+		return newSheets;
+	}
+
+	/**
+	 * Atomically merges new sheet metadata into the existing metadata map.
+	 * Uses a promise queue to serialize updates and prevent race conditions.
+	 * @param newMetadata - Map of new metadata to merge
+	 * @returns Promise that resolves when the update is complete
+	 */
+	async function updateSheetMetadata(
+		newMetadata: Map<string, { approved: boolean; published: boolean }>
+	): Promise<void> {
+		// Queue this update to run after all previous updates complete
+		const previousUpdate = metadataUpdateQueue;
+		let resolveUpdate: () => void;
+		const thisUpdate = new Promise<void>((resolve) => {
+			resolveUpdate = resolve;
+		});
+		
+		metadataUpdateQueue = previousUpdate.then(async () => {
+			// Read the latest state right before updating (atomic read)
+			const currentMetadata = new Map(sheetMetadata);
+			// Merge new metadata into the copy
+			newMetadata.forEach((value, key) => {
+				currentMetadata.set(key, value);
+			});
+			// Atomically update the state
+			sheetMetadata = currentMetadata;
+			// Resolve this update's promise
+			resolveUpdate!();
+		});
+		
+		// Wait for this update to complete
+		await thisUpdate;
+	}
+
+	/**
+	 * Processes sheets from structureData: extracts sheet objects and updates metadata.
+	 * @param structureData - Structure data containing sheets array
+	 * @param appName - Name of the app
+	 * @param appId - ID of the app
+	 */
+	async function processSheets(structureData: any, appName: string, appId: string): Promise<void> {
+		if (!structureData.sheets || !Array.isArray(structureData.sheets)) {
+			return;
+		}
+
+		// Extract and add sheet objects
+		const newSheets = extractSheetObjects(structureData.sheets, appName, appId);
+		sheets = [...sheets, ...newSheets];
+
+		// Extract and atomically merge metadata (serialized via promise queue)
+		const newMetadata = extractSheetMetadata(structureData.sheets);
+		await updateSheetMetadata(newMetadata);
 	}
 
 	const availableSheets = $derived.by(() => {
@@ -915,12 +1021,12 @@
 				return;
 			}
 			
-			const { spaces: spacesApi } = qlikApi;
-			
-			const spacesResponse = await spacesApi.getSpaces();
-			if (spacesResponse.status !== 200) {
-				throw new Error(`Failed to get spaces: ${spacesResponse.status}`);
-			}
+		const { spaces: spacesApi } = qlikApi;
+		
+		const spacesResponse = await spacesApi.getSpaces({ limit: 100 });
+		if (spacesResponse.status !== 200) {
+			throw new Error(`Failed to get spaces: ${spacesResponse.status}`);
+		}
 			
 			const allSpaces = spacesResponse.data?.data || [];
 			spaces = allSpaces
@@ -1030,29 +1136,7 @@
 					}];
 					qlikApps = updatedApps;
 					
-					if (structureData.sheets && Array.isArray(structureData.sheets)) {
-						const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
-						const newMetadata = new Map(sheetMetadata);
-						structureData.sheets.forEach((sheet: any) => {
-							const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
-							const sheetId = sheet?.qProperty?.qInfo?.qId || '';
-							if (sheetTitle && sheetId) {
-								const approved = !!sheet.approved;
-								const published = !!sheet.published;
-								newSheets.push({
-									name: sheetTitle,
-									app: appName,
-									appId: appId,
-									sheetId: sheetId,
-									approved,
-									published
-								});
-								newMetadata.set(sheetId, { approved, published });
-							}
-						});
-						sheets = [...sheets, ...newSheets];
-						sheetMetadata = newMetadata;
-					}
+					await processSheets(structureData, appName, appId);
 					// Build index but don't trigger search - let the effect handle it
 					buildSearchableIndex();
 					// Trigger incremental search for this new app's data
@@ -1132,29 +1216,7 @@
 			
 			qlikApps = [...qlikApps, { id: appId, name: appName, data: structureData }];
 			
-			if (structureData.sheets && Array.isArray(structureData.sheets)) {
-				const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
-				const newMetadata = new Map(sheetMetadata);
-				structureData.sheets.forEach((sheet: any) => {
-					const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
-					const sheetId = sheet?.qProperty?.qInfo?.qId || '';
-					if (sheetTitle && sheetId) {
-						const approved = !!sheet.approved;
-						const published = !!sheet.published;
-						newSheets.push({
-							name: sheetTitle,
-							app: appName,
-							appId: appId,
-							sheetId: sheetId,
-							approved,
-							published
-						});
-						newMetadata.set(sheetId, { approved, published });
-					}
-				});
-				sheets = [...sheets, ...newSheets];
-				sheetMetadata = newMetadata;
-			}
+			await processSheets(structureData, appName, appId);
 			buildSearchableIndex();
 			
 			loadAppDataInBackground();
@@ -1200,6 +1262,8 @@
 		selectedTypes = new Set();
 		selectedSheetStates = new Set();
 		sheetMetadata = new Map();
+		// Reset the metadata update queue to prevent stale updates from overwriting fresh state
+		metadataUpdateQueue = Promise.resolve();
 		
 		await loadAppList();
 	}
@@ -1311,13 +1375,15 @@
 		}
 		
 		// Track existing paths to avoid duplicates when appending incrementally
-		const existingPaths = incremental ? new Set(searchResults.map(r => r.path)) : new Set();
+		// Use appId:path as the key since paths are only unique within an app
+		const existingPaths = incremental ? new Set(searchResults.map(r => `${r.appId}:${r.path}`)) : new Set();
 		
 		for (const item of candidateResults) {
 			const sheetName = item.sheetName || item.sheet;
 			
 			// Skip if already in results (when appending incrementally)
-			if (incremental && existingPaths.has(item.path)) {
+			// Use appId:path to match the deduplication logic used when building the index
+			if (incremental && existingPaths.has(`${item.appId}:${item.path}`)) {
 				continue;
 			}
 			
@@ -1359,7 +1425,8 @@
 			}
 
 			// Add to unfilteredResults (only if not incremental or not already present)
-			if (!incremental || !unfilteredResults.find(r => r.path === item.path)) {
+			// Use appId:path to match the deduplication logic used when building the index
+			if (!incremental || !unfilteredResults.find(r => r.appId === item.appId && r.path === item.path)) {
 				unfilteredResults.push({
 					path: item.path,
 					object: item.object,
@@ -1367,9 +1434,12 @@
 					context: item.context,
 					file: item.file,
 					app: item.app,
+					appId: item.appId,
 					sheet: sheetName,
 					sheetName: sheetName,
+					sheetId: item.sheetId || null,
 					sheetUrl: item.sheetUrl || null,
+					chartId: item.chartId || null,
 					chartTitle: item.chartTitle || null,
 					chartUrl: item.chartUrl || null,
 					labels: item.labels || []
@@ -1530,11 +1600,12 @@
 		
 		if (wasSelected) {
 			newSet.delete(appId);
+			// Remove sheets by sheetId (not sheetName) since selectedSheets stores sheetId values
 			const sheetsToRemove = sheets
 				.filter((sheet) => sheet.appId === appId)
-				.map((sheet) => sheet.name);
+				.map((sheet) => sheet.sheetId);
 			const newSheetsSet = createNewSet(selectedSheets);
-			sheetsToRemove.forEach((sheetName) => newSheetsSet.delete(sheetName));
+			sheetsToRemove.forEach((sheetId) => newSheetsSet.delete(sheetId));
 			selectedSheets = newSheetsSet;
 		} else {
 			newSet.add(appId);
@@ -1543,12 +1614,12 @@
 		selectedApps = newSet;
 	}
 
-	function toggleSheet(sheetName: string) {
+	function toggleSheet(sheetId: string) {
 		const newSet = createNewSet(selectedSheets);
-		if (newSet.has(sheetName)) {
-			newSet.delete(sheetName);
+		if (newSet.has(sheetId)) {
+			newSet.delete(sheetId);
 		} else {
-			newSet.add(sheetName);
+			newSet.add(sheetId);
 		}
 		selectedSheets = newSet;
 	}
