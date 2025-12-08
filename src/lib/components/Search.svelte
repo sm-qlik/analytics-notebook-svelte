@@ -1370,9 +1370,12 @@
 					context: item.context,
 					file: item.file,
 					app: item.app,
+					appId: item.appId,
 					sheet: sheetName,
 					sheetName: sheetName,
+					sheetId: item.sheetId || null,
 					sheetUrl: item.sheetUrl || null,
+					chartId: item.chartId || null,
 					chartTitle: item.chartTitle || null,
 					chartUrl: item.chartUrl || null,
 					labels: item.labels || []
