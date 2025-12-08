@@ -257,7 +257,7 @@
 					</div>
 				</div>
 				{#if spacesExpanded}
-					<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden">
+					<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden pl-1">
 						{#each filteredSpaces as space (space.id)}
 							{@const isChecked = selectedSpaces.has(space.id)}
 							{@const spaceId = space.id}
@@ -324,7 +324,7 @@
 				</div>
 			</div>
 			{#if appsExpanded}
-				<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden">
+				<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden pl-1">
 					{#each filteredApps as app (`${tenantHostname}-${app.id}`)}
 						{@const isLoaded = loadedAppIds.has(app.id)}
 						{@const isLoading = loadingAppIds.has(app.id)}
@@ -439,7 +439,7 @@
 						</button>
 					{/if}
 				</div>
-				<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden">
+				<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden pl-1">
 					{#each filteredSheets as sheet (sheet.id)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 							<input
@@ -502,7 +502,7 @@
 				</div>
 			</div>
 			{#if sheetStatesExpanded}
-				<div class="space-y-2">
+				<div class="space-y-2 pl-1">
 					{#each ['Public', 'Community', 'Private'] as state}
 						{@const isChecked = selectedSheetStates.has(state)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
