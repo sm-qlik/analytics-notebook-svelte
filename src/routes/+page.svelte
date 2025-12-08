@@ -12,8 +12,8 @@
   let authState = $state<any>(null);
   
   let pageTitle = $derived(
-    isAuthenticated && authState?.tenantName 
-      ? `${authState.tenantName} - Analytics Notebook` 
+    authState?.isAuthenticated && authState?.tenantName
+      ? `${authState.tenantName} - Analytics Notebook`
       : 'Analytics Notebook'
   );
   
