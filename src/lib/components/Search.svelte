@@ -19,7 +19,7 @@
 		context: any;
 		file?: string;
 		app?: string;
-		appId?: string;
+		appId: string; // Required - all data comes from apps
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
@@ -36,7 +36,7 @@
 		context: any;
 		file?: string;
 		app?: string;
-		appId?: string;
+		appId: string; // Required - all data comes from apps
 		sheet?: string | null;
 		sheetName?: string | null;
 		sheetId?: string | null;
