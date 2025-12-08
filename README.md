@@ -26,7 +26,7 @@ A Svelte web application for searching and exploring Qlik Cloud analytics conten
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+ 
+- [Node.js](https://nodejs.org/) 22+ 
 - A Qlik Cloud tenant (US or EU region, unless you add additional OAuth clients)
 
 ### Installation
@@ -103,20 +103,11 @@ This runs `npm run build` followed by `npm run deploy`, which uses `gh-pages` to
 ```
 src/
 ├── lib/
-│   ├── components/       # Svelte components
-│   │   ├── Search.svelte            # Main search interface
-│   │   ├── Login.svelte             # Authentication form
-│   │   ├── FilterSidebar.svelte     # Filter controls
-│   │   ├── SearchResultsTable.svelte # Results display
-│   │   └── ...
-│   ├── stores/
-│   │   └── auth.ts       # Authentication state store
-│   └── utils/
-│       ├── qlik-auth.ts      # OAuth utilities
-│       └── engine-interface.ts # Qlik Engine API helpers
-├── routes/
-│   ├── +page.svelte      # Main page
-│   ├── +layout.svelte    # Root layout
-│   └── oauth-callback/   # OAuth callback handler
-└── app.css               # Global styles
+│   ├── assets/           # Static assets (favicon, logos, images)
+│   ├── components/       # Svelte UI components (search, filters, displays, indicators)
+│   ├── stores/           # Svelte stores for state management (authentication)
+│   ├── utils/            # Utility functions (Qlik auth, engine API, table helpers)
+│   └── index.ts          # Library exports
+├── routes/               # SvelteKit routes (pages, layouts, OAuth callback)
+└── app.*                 # App configuration files (CSS, TypeScript types, HTML template)
 ```
