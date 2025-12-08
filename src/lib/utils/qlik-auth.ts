@@ -166,3 +166,52 @@ export async function loadQlikAPI() {
 	return apiModule;
 }
 
+// Global auth configuration state to prevent multiple setDefaultHostConfig calls
+let configuredTenantUrl: string | null = null;
+let isConfiguring = false;
+
+/**
+ * Configure Qlik API auth once per tenant
+ * This prevents the "already registered" warning and ensures token reuse
+ */
+export async function configureQlikAuthOnce(tenantUrl: string): Promise<void> {
+	// If already configured for this tenant, skip
+	if (configuredTenantUrl === tenantUrl) {
+		return;
+	}
+
+	// Prevent concurrent configuration attempts
+	if (isConfiguring) {
+		// Wait a bit and check again
+		await new Promise(resolve => setTimeout(resolve, 100));
+		if (configuredTenantUrl === tenantUrl) {
+			return;
+		}
+	}
+
+	isConfiguring = true;
+
+	try {
+		const qlikApi = await loadQlikAPI();
+		const tenantInfo = parseTenantUrl(tenantUrl);
+		const authConfig = createAuthConfig(tenantInfo);
+		const { auth } = qlikApi;
+		
+		// Only set if not already configured for this tenant
+		if (configuredTenantUrl !== tenantUrl) {
+			auth.setDefaultHostConfig(authConfig);
+			configuredTenantUrl = tenantUrl;
+		}
+	} finally {
+		isConfiguring = false;
+	}
+}
+
+/**
+ * Reset auth configuration (e.g., on logout or tenant change)
+ */
+export function resetAuthConfiguration(): void {
+	configuredTenantUrl = null;
+	isConfiguring = false;
+}
+

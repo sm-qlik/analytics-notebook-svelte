@@ -74,6 +74,12 @@ function createAuthStore() {
 					// Also clear any Qlik API tokens
 					localStorage.removeItem('qlik-access-token');
 					sessionStorage.removeItem('qlik-access-token');
+					// Reset auth configuration to allow reconfiguration on next login
+					import('$lib/utils/qlik-auth').then(({ resetAuthConfiguration }) => {
+						resetAuthConfiguration();
+					}).catch(() => {
+						// Ignore errors if module not loaded yet
+					});
 				} catch (e) {
 					console.warn('Failed to clear auth state from localStorage:', e);
 				}

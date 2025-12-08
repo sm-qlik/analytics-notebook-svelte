@@ -1,23 +1,8 @@
 <script lang="ts">
 	import * as XLSX from 'xlsx';
+	import { getColumnValue, type SortableColumn, type SearchResult } from '$lib/utils/table-columns';
 
-	interface SearchResult {
-		path: string;
-		object: any;
-		objectType: string | null;
-		context: any;
-		file?: string;
-		app?: string;
-		appId?: string;
-		sheet?: string | null;
-		sheetName?: string | null;
-		sheetId?: string | null;
-		sheetUrl?: string | null;
-		chartId?: string | null;
-		chartTitle?: string | null;
-		chartUrl?: string | null;
-		labels?: string[];
-	}
+	// SearchResult and SortableColumn types imported from utils/table-columns
 
 	interface Props {
 		results: SearchResult[];
@@ -31,9 +16,123 @@
 		onExportToExcel: () => void;
 		onCopyToClipboard: (text: string, id: string) => void;
 		copiedDefinitionId: string | null;
+		tenantUrl: string | null;
 	}
 
-	let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId }: Props = $props();
+	let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl }: Props = $props();
+
+	let itemsPerPage = $state(25);
+	const pageSizeOptions = [25, 50, 100, 200];
+
+	// Sorting state - support all columns
+	let sortColumn = $state<SortableColumn>(null);
+	let sortDirection = $state<'asc' | 'desc'>('asc');
+
+	/**
+	 * Get sortable value for a column.
+	 * Delegates to the shared utility function for consistency across table layouts.
+	 */
+	function getSortValue(result: SearchResult, column: SortableColumn): string {
+		return getColumnValue(result, column);
+	}
+
+	/**
+	 * Sorted results (full dataset).
+	 * Applies sorting to all results before pagination.
+	 */
+	const sortedResults = $derived.by(() => {
+		if (!sortColumn) {
+			return results;
+		}
+		
+		return [...results].sort((a, b) => {
+			const aValue = getSortValue(a, sortColumn);
+			const bValue = getSortValue(b, sortColumn);
+			const comparison = aValue.localeCompare(bValue);
+			return sortDirection === 'asc' ? comparison : -comparison;
+		});
+	});
+
+	/**
+	 * Paginated results from sorted dataset.
+	 * Slices the sorted results based on current page.
+	 */
+	const sortedAndPaginatedResults = $derived.by(() => {
+		const startIndex = (currentPage - 1) * itemsPerPage;
+		const endIndex = startIndex + itemsPerPage;
+		return sortedResults.slice(startIndex, endIndex);
+	});
+
+	/**
+	 * Total pages based on sorted results length.
+	 * Recalculated when sorting changes to ensure pagination works correctly.
+	 */
+	const actualTotalPages = $derived(Math.ceil(sortedResults.length / itemsPerPage));
+
+	/**
+	 * Toggle sort column and direction.
+	 * Clicking the same column toggles direction, clicking a different column sets it to ascending.
+	 * Resets to page 1 when sorting changes.
+	 */
+	function toggleSort(column: SortableColumn) {
+		if (sortColumn === column) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sortColumn = column;
+			sortDirection = 'asc';
+		}
+		if (currentPage > 1) {
+			onPageChange(1);
+		}
+	}
+
+	// Handle page size change - reset to page 1 if current page would be out of bounds
+	function handlePageSizeChange(newSize: number) {
+		itemsPerPage = newSize;
+		// Reset to page 1 if current page would be out of bounds with new page size
+		const newTotalPages = Math.ceil(sortedResults.length / newSize);
+		if (currentPage > newTotalPages && newTotalPages > 0) {
+			onPageChange(1);
+		}
+	}
+
+	// Internal page change handlers that validate against actual total pages
+	function handlePageChange(page: number) {
+		if (page >= 1 && page <= actualTotalPages) {
+			onPageChange(page);
+		}
+	}
+
+	function handleNextPage() {
+		if (currentPage < actualTotalPages) {
+			onNextPage();
+		}
+	}
+
+	function handlePreviousPage() {
+		if (currentPage > 1) {
+			onPreviousPage();
+		}
+	}
+
+	function getTypeColorClass(type: string | null): string {
+		if (!type) return 'text-gray-900 dark:text-gray-100';
+		if (type === 'Master Measure') return 'text-blue-700 dark:text-blue-300';
+		if (type === 'Master Dimension') return 'text-purple-700 dark:text-purple-300';
+		if (type === 'Sheet Measure') return 'text-emerald-700 dark:text-emerald-300';
+		if (type === 'Sheet Dimension') return 'text-amber-700 dark:text-amber-300';
+		return 'text-gray-900 dark:text-gray-100';
+	}
+
+	function getAppUrl(appId: string | undefined): string | null {
+		if (!tenantUrl || !appId) return null;
+		const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
+		return `https://${cleanTenantUrl}/sense/app/${appId}`;
+	}
+
+	function getCopyId(result: SearchResult, field: string): string {
+		return `${result.path}-${result.app}-${field}`;
+	}
 
 	// Debounced search query for highlighting (only updates after user stops typing for 2 seconds)
 	let debouncedQuery = $state('');
@@ -94,7 +193,7 @@
 	// Only highlight when not currently typing (debounced query is set and highlighting is active)
 	const shouldHighlight = $derived.by(() => {
 		const query = debouncedQuery;
-		return isHighlighting && query.length >= 2 && results.length > 0 && results.length <= 20;
+		return isHighlighting && query.length >= 2 && sortedAndPaginatedResults.length > 0 && sortedAndPaginatedResults.length <= itemsPerPage;
 	});
 	
 	// Cache for highlighted text (limited size)
@@ -129,8 +228,8 @@
 			return textStr;
 		}
 		
-		// Check if highlighting should be enabled
-		if (results.length === 0 || results.length > 20) {
+		// Check if highlighting should be enabled (using shouldHighlight derived value)
+		if (!shouldHighlight) {
 			return textStr;
 		}
 		
@@ -229,11 +328,11 @@
 			{#if searchQuery.trim()}
 				for "{searchQuery}"
 			{/if}
-			{#if totalPages > 1}
-				<span class="ml-2">(Page {currentPage} of {totalPages})</span>
+			{#if actualTotalPages > 1}
+				<span class="ml-2">(Page {currentPage} of {actualTotalPages})</span>
 			{/if}
 		</div>
-		{#if results.length > 0}
+		{#if sortedAndPaginatedResults.length > 0}
 			<button
 				type="button"
 				onclick={onExportToExcel}
@@ -258,22 +357,136 @@
 		{/if}
 	</div>
 
-	{#if results.length > 0}
+	{#if sortedAndPaginatedResults.length > 0}
 		<div class="flex flex-col bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
 			<div class="overflow-x-hidden min-w-0">
 				<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 min-w-0">
 				<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
 					<tr>
-					  <th class="w-[13%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Labels</th>
-					  <th class="w-[28%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Definition</th>
-					  <th class="w-[16%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">App</th>
-					  <th class="w-[16%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sheet</th>
-					  <th class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
-					  <th class="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chart Title</th>
+					  <th 
+						class="w-[13%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+						onclick={() => toggleSort('labels')}
+						title="Click to sort"
+					  >
+						<div class="flex items-center gap-1">
+							Labels
+							{#if sortColumn === 'labels'}
+								{#if sortDirection === 'asc'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+									</svg>
+								{/if}
+							{/if}
+						</div>
+					  </th>
+					  <th 
+						class="w-[28%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+						onclick={() => toggleSort('definition')}
+						title="Click to sort"
+					  >
+						<div class="flex items-center gap-1">
+							Definition
+							{#if sortColumn === 'definition'}
+								{#if sortDirection === 'asc'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+									</svg>
+								{/if}
+							{/if}
+						</div>
+					  </th>
+					  <th 
+						class="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+						onclick={() => toggleSort('chartTitle')}
+						title="Click to sort"
+					  >
+						<div class="flex items-center gap-1">
+							Chart
+							{#if sortColumn === 'chartTitle'}
+								{#if sortDirection === 'asc'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+									</svg>
+								{/if}
+							{/if}
+						</div>
+					  </th>
+					  <th 
+						class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+						onclick={() => toggleSort('type')}
+						title="Click to sort"
+					  >
+						<div class="flex items-center gap-1">
+							Type
+							{#if sortColumn === 'type'}
+								{#if sortDirection === 'asc'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+									</svg>
+								{/if}
+							{/if}
+						</div>
+					  </th>
+					  <th 
+						class="w-[16%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+						onclick={() => toggleSort('app')}
+						title="Click to sort"
+					  >
+						<div class="flex items-center gap-1">
+							App
+							{#if sortColumn === 'app'}
+								{#if sortDirection === 'asc'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+									</svg>
+								{/if}
+							{/if}
+						</div>
+					  </th>
+					  <th 
+						class="w-[16%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+						onclick={() => toggleSort('sheet')}
+						title="Click to sort"
+					  >
+						<div class="flex items-center gap-1">
+							Sheet
+							{#if sortColumn === 'sheet'}
+								{#if sortDirection === 'asc'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+									</svg>
+								{/if}
+							{/if}
+						</div>
+					  </th>
 					</tr>
 				</thead>
 				<tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-					{#each results as result}
+					{#each sortedAndPaginatedResults as result}
 					{@const obj = result.object}
 					{@const title = (() => {
 						if (!obj) return 'N/A';
@@ -354,57 +567,34 @@
 					{@const labels = result.labels || []}
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								{#if labels.length > 0}
-									<div class="flex flex-wrap gap-1">
-										{#each labels as label}
-											<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 {shouldHighlightText(label, debouncedQuery) ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : ''}" title={label}>
-												{@html highlightText(label, debouncedQuery)}
-											</span>
-										{/each}
-									</div>
-								{:else}
-									<span class="text-gray-400">N/A</span>
-								{/if}
-							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="flex items-start gap-2 group">
-									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
-										{@html highlightText(definition, debouncedQuery)}
+									<div class="flex-1">
+										{#if labels.length > 0}
+											<div class="flex flex-wrap gap-1">
+												{#each labels as label}
+													<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 {shouldHighlightText(label, debouncedQuery) ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : ''}" title={label}>
+														{@html highlightText(label, debouncedQuery)}
+													</span>
+												{/each}
+											</div>
+										{:else}
+											<span class="text-gray-400">N/A</span>
+										{/if}
 									</div>
-									{#if definition !== 'N/A'}
+									{#if labels.length > 0}
 										<button
 											type="button"
-											onclick={() => onCopyToClipboard(definition, `${result.path}-${result.app}`)}
-											class="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors mt-0.5"
-											title="Copy definition to clipboard"
+											onclick={() => onCopyToClipboard(labels.join(', '), getCopyId(result, 'labels'))}
+											class="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors mt-0.5 opacity-0 group-hover:opacity-100"
+											title="Copy labels to clipboard"
 										>
-											{#if copiedDefinitionId === `${result.path}-${result.app}`}
-												<svg
-													class="w-4 h-4 text-green-600 dark:text-green-400"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M5 13l4 4L19 7"
-													/>
+											{#if copiedDefinitionId === getCopyId(result, 'labels')}
+												<svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 												</svg>
 											{:else}
-												<svg
-													class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-													/>
+												<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
 												</svg>
 											{/if}
 										</button>
@@ -412,44 +602,197 @@
 								</div>
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								<div class="truncate {shouldHighlightText(result.app || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
-									{@html highlightText(result.app || '', debouncedQuery)} <span class="text-gray-400 dark:text-gray-500">({result.appId?.slice(0, 8)}...)</span>
+								<div class="flex items-start gap-2 group">
+									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
+										{@html highlightText(definition, debouncedQuery)}
+									</div>
+									{#if definition !== 'N/A'}
+										<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+											<button
+												type="button"
+												onclick={() => onCopyToClipboard(definition, getCopyId(result, 'definition'))}
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Copy definition to clipboard"
+											>
+												{#if copiedDefinitionId === getCopyId(result, 'definition')}
+													<svg
+														class="w-4 h-4 text-green-600 dark:text-green-400"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M5 13l4 4L19 7"
+														/>
+													</svg>
+												{:else}
+													<svg
+														class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+														/>
+													</svg>
+												{/if}
+											</button>
+										</div>
+									{/if}
+								</div>
+							</td>
+							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+								<div class="flex items-start gap-2 group">
+									<div class="flex-1 min-w-0 {shouldHighlightText(chartTitle || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{chartTitle || 'N/A'} ({chartId})">
+										{#if chartTitle}
+											<div class="truncate">
+												{@html highlightText(chartTitle, debouncedQuery)}
+											</div>
+											{#if chartId}
+												<div class="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+													{chartId}
+												</div>
+											{/if}
+										{:else}
+											<span class="text-gray-400">N/A</span>
+										{/if}
+									</div>
+									<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+										{#if chartTitle}
+											<button
+												type="button"
+												onclick={() => onCopyToClipboard(chartTitle || '', getCopyId(result, 'chartTitle'))}
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Copy chart title to clipboard"
+											>
+												{#if copiedDefinitionId === getCopyId(result, 'chartTitle')}
+													<svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+													</svg>
+												{:else}
+													<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+													</svg>
+												{/if}
+											</button>
+										{/if}
+										{#if chartUrl && chartTitle}
+											<a
+												href={chartUrl}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Open chart in new window"
+											>
+												<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+												</svg>
+											</a>
+										{/if}
+									</div>
+								</div>
+							</td>
+							<td class="px-4 py-4 text-sm">
+								<div class="truncate {getTypeColorClass(result.objectType)} font-medium" title={result.objectType}>{result.objectType}</div>
+							</td>
+							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
+								<div class="flex items-start gap-2 group">
+									<div class="flex-1 min-w-0 {shouldHighlightText(result.app || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
+										<div class="truncate">
+											{@html highlightText(result.app || '', debouncedQuery)}
+										</div>
+										{#if result.appId}
+											<div class="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+												{result.appId}
+											</div>
+										{/if}
+									</div>
+									<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+										<button
+											type="button"
+											onclick={() => onCopyToClipboard(result.app || '', getCopyId(result, 'app'))}
+											class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+											title="Copy app name to clipboard"
+										>
+											{#if copiedDefinitionId === getCopyId(result, 'app')}
+												<svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+												</svg>
+											{:else}
+												<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+												</svg>
+											{/if}
+										</button>
+										{#if getAppUrl(result.appId)}
+											<a
+												href={getAppUrl(result.appId)!}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Open app in new window"
+											>
+												<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+												</svg>
+											</a>
+										{/if}
+									</div>
 								</div>
 							</td>
 						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-							{#if sheetUrl && sheetName !== 'N/A'}
-								<a
-									href={sheetUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
-									title={sheetName}
-								>
-									{@html highlightText(sheetName, debouncedQuery)}
-								</a>
-							{:else}
-								<div class="truncate {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={sheetName}>
-									{@html highlightText(sheetName, debouncedQuery)}
+							<div class="flex items-start gap-2 group">
+								<div class="flex-1 min-w-0 {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{sheetName} ({sheetId})">
+									<div class="truncate">
+										{@html highlightText(sheetName, debouncedQuery)}
+									</div>
+									{#if sheetId}
+										<div class="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+											{sheetId}
+										</div>
+									{/if}
 								</div>
-							{/if}
-						</td>
-						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-							<div class="truncate" title={result.objectType}>{result.objectType}</div>
-						</td>
-					<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-							{#if chartUrl && chartTitle}
-								<a
-									href={chartUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(chartTitle, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
-									title={chartTitle}
-								>
-									{@html highlightText(chartTitle, debouncedQuery)}
-								</a>
-							{:else}
-								<span class="text-gray-400">N/A</span>
-							{/if}
+								<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+									{#if sheetName && sheetName !== 'N/A'}
+										<button
+											type="button"
+											onclick={() => onCopyToClipboard(sheetName, getCopyId(result, 'sheet'))}
+											class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+											title="Copy sheet name to clipboard"
+										>
+											{#if copiedDefinitionId === getCopyId(result, 'sheet')}
+												<svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+												</svg>
+											{:else}
+												<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+												</svg>
+											{/if}
+										</button>
+									{/if}
+									{#if sheetUrl && sheetName !== 'N/A'}
+										<a
+											href={sheetUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+											title="Open sheet in new window"
+										>
+											<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+											</svg>
+										</a>
+									{/if}
+								</div>
+							</div>
 						</td>
 						</tr>
 					{/each}
@@ -457,12 +800,12 @@
 			</table>
 			</div>
 			
-			{#if totalPages > 1}
+			{#if actualTotalPages > 1}
 			{@const pageNumbers = (() => {
 				const pages: (number | string)[] = [];
-				if (totalPages <= 7) {
+				if (actualTotalPages <= 7) {
 					// Show all pages if 7 or fewer
-					for (let i = 1; i <= totalPages; i++) {
+					for (let i = 1; i <= actualTotalPages; i++) {
 						pages.push(i);
 					}
 				} else {
@@ -475,11 +818,11 @@
 							pages.push(i);
 						}
 						pages.push('...');
-						pages.push(totalPages);
-					} else if (currentPage >= totalPages - 3) {
+						pages.push(actualTotalPages);
+					} else if (currentPage >= actualTotalPages - 3) {
 						// Near the end: show 1, ..., last-4, last-3, last-2, last-1, last
 						pages.push('...');
-						for (let i = totalPages - 4; i <= totalPages; i++) {
+						for (let i = actualTotalPages - 4; i <= actualTotalPages; i++) {
 							pages.push(i);
 						}
 					} else {
@@ -489,7 +832,7 @@
 							pages.push(i);
 						}
 						pages.push('...');
-						pages.push(totalPages);
+						pages.push(actualTotalPages);
 					}
 				}
 				return pages;
@@ -498,7 +841,7 @@
 				<div class="flex items-center gap-2">
 					<button
 						type="button"
-						onclick={onPreviousPage}
+						onclick={handlePreviousPage}
 						disabled={currentPage === 1}
 						class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 					>
@@ -509,7 +852,7 @@
 							{#if typeof pageNum === 'number'}
 								<button
 									type="button"
-									onclick={() => onPageChange(pageNum)}
+									onclick={() => handlePageChange(pageNum)}
 									class="px-3 py-1 text-sm font-medium rounded-md transition-colors {currentPage === pageNum 
 										? 'bg-blue-600 text-white dark:bg-blue-500' 
 										: 'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}"
@@ -523,15 +866,32 @@
 					</div>
 					<button
 						type="button"
-						onclick={onNextPage}
-						disabled={currentPage === totalPages}
+						onclick={handleNextPage}
+						disabled={currentPage >= actualTotalPages}
 						class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 					>
 						Next
 					</button>
 				</div>
-				<div class="text-sm text-gray-600 dark:text-gray-400">
-					Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, totalResults)} of {totalResults} results
+				<div class="flex items-center gap-4">
+					<div class="flex items-center gap-2">
+						<label for="page-size-select" class="text-sm text-gray-600 dark:text-gray-400">
+							Items per page:
+						</label>
+						<select
+							id="page-size-select"
+							value={itemsPerPage}
+							onchange={(e) => handlePageSizeChange(Number((e.target as HTMLSelectElement).value))}
+							class="pl-2 pr-8 py-1 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-colors appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27none%27 viewBox=%270 0 20 20%27%3E%3Cpath stroke=%27%236b7280%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 stroke-width=%271.5%27 d=%27M6 8l4 4 4-4%27/%3E%3C/svg%3E')] bg-[length:1rem_1rem] bg-no-repeat bg-[right_0.5rem_center] dark:bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27none%27 viewBox=%270 0 20 20%27%3E%3Cpath stroke=%27%239ca3af%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 stroke-width=%271.5%27 d=%27M6 8l4 4 4-4%27/%3E%3C/svg%3E')]"
+						>
+							{#each pageSizeOptions as option}
+								<option value={option}>{option}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="text-sm text-gray-600 dark:text-gray-400">
+						Showing {sortedResults.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0} to {Math.min(currentPage * itemsPerPage, sortedResults.length)} of {sortedResults.length} results
+					</div>
 				</div>
 			</div>
 			{/if}

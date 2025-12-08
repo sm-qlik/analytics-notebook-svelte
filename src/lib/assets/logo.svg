@@ -1,27 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <!-- Outer ring -->
-  <circle cx="256" cy="256" r="230" fill="#46C646"/>
-  <circle cx="256" cy="256" r="190" fill="#FFFFFF"/>
-
-  <!-- Notebook body (rounded rect) -->
-  <defs>
-    <clipPath id="notebookClip">
-      <rect x="166" y="140" width="260" height="300" rx="26" ry="26" />
-    </clipPath>
-  </defs>
-  <!-- Right (lighter) -->
-  <rect x="166" y="140" width="260" height="300" rx="26" ry="26" fill="#46C646"/>
-  <!-- Left (darker) overlay to create two-tone -->
-  <rect x="166" y="140" width="120" height="300" rx="26" ry="26" fill="#009845" clip-path="url(#notebookClip)"/>
-
-  <!-- Binding discs (rounded "tabs") -->
-  <rect x="178" y="190" width="36" height="18" rx="9" ry="9" fill="#009845"/>
-  <rect x="178" y="240" width="36" height="18" rx="9" ry="9" fill="#009845"/>
-  <rect x="178" y="290" width="36" height="18" rx="9" ry="9" fill="#009845"/>
-
-  <!-- Page lines (rounded) -->
-  <rect x="250" y="210" width="140" height="18" rx="9" ry="9" fill="#BFBFBF"/>
-  <rect x="250" y="255" width="112" height="18" rx="9" ry="9" fill="#BFBFBF"/>
-  <rect x="250" y="300" width="100" height="18" rx="9" ry="9" fill="#BFBFBF"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="70" height="32" fill="none" viewBox="0 0 70 32">
+  <path fill="#54565a" d="M39.176 1.66h-2.985v28.56h2.985zm8.11 8.608h-2.974v19.953h2.974zm.546-6.248a2.033 2.033 0 1 0-4.014-.652 2.033 2.033 0 0 0 4.014.652m20.35 6.248H64.04l-8.598 7.527-.01-16.135h-2.975v28.56h2.974v-9.214l8.825 9.214h4.131L57.864 19.547zM16 27.918C9.414 27.918 4.082 22.586 4.082 16c0-2.801.963-5.364 2.574-7.397L4.482 6.397A14.93 14.93 0 0 0 1 16c0 8.284 6.716 15 15 15a14.96 14.96 0 0 0 9.463-3.363l-2.174-2.207A11.9 11.9 0 0 1 16 27.918"/>
+  <path fill="#009845" d="m27.528 25.55.173-.174A14.95 14.95 0 0 0 30.988 16c0-8.284-6.716-15-15-15a14.9 14.9 0 0 0-9.42 3.33 15 15 0 0 0-2.043 2.002c-.022.021-.033.043-.054.065l2.173 2.206c.022-.022.033-.044.055-.076a12 12 0 0 1 2.044-1.99 11.9 11.9 0 0 1 7.245-2.455c6.587 0 11.918 5.332 11.918 11.918 0 2.78-.951 5.332-2.541 7.354a11.8 11.8 0 0 1-1.969 1.98l-.119.086 2.174 2.206 2.563 2.595h4.131l-4.617-4.672Z"/>
 </svg>

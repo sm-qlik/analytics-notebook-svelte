@@ -6,6 +6,7 @@
 		selectedSpaces: Set<string>;
 		selectedApps: Set<string>;
 		selectedSheets: Set<string>;
+		selectedSheetStates: Set<string>;
 		loadedAppIds: Set<string>;
 		loadingAppIds: Set<string>;
 		tenantHostname: string;
@@ -14,12 +15,15 @@
 		onToggleSpace: (spaceId: string) => void;
 		onToggleApp: (appId: string) => void;
 		onToggleSheet: (sheetName: string) => void;
+		onToggleSheetState: (state: string) => void;
 		onSelectAllSpaces: () => void;
 		onDeselectAllSpaces: () => void;
 		onSelectAllApps: () => void;
 		onDeselectAllApps: () => void;
 		onSelectAllSheets: () => void;
 		onDeselectAllSheets: () => void;
+		onSelectAllSheetStates: () => void;
+		onDeselectAllSheetStates: () => void;
 	}
 
 	let {
@@ -29,6 +33,7 @@
 		selectedSpaces,
 		selectedApps,
 		selectedSheets,
+		selectedSheetStates,
 		loadedAppIds,
 		loadingAppIds,
 		tenantHostname,
@@ -37,20 +42,86 @@
 		onToggleSpace,
 		onToggleApp,
 		onToggleSheet,
+		onToggleSheetState,
 		onSelectAllSpaces,
 		onDeselectAllSpaces,
 		onSelectAllApps,
 		onDeselectAllApps,
 		onSelectAllSheets,
-		onDeselectAllSheets
+		onDeselectAllSheets,
+		onSelectAllSheetStates,
+		onDeselectAllSheetStates
 	}: Props = $props();
 
 	let spacesExpanded = $state(true);
 	let appsExpanded = $state(true);
 	let sheetsExpanded = $state(true);
+	let sheetStatesExpanded = $state(true);
 
 	let searchQuery = $state('');
 	let sheetSearchQuery = $state('');
+
+	// Resizable sidebar width
+	const MIN_WIDTH = 200;
+	const MAX_WIDTH = 600;
+	const DEFAULT_WIDTH = 256; // w-64 = 256px
+	
+	let sidebarWidth = $state(DEFAULT_WIDTH);
+	let isResizing = $state(false);
+	let resizeStartX = $state(0);
+	let resizeStartWidth = $state(0);
+
+	// Load saved width from localStorage on mount
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			const savedWidth = localStorage.getItem('filterSidebarWidth');
+			if (savedWidth) {
+				const width = parseInt(savedWidth, 10);
+				if (width >= MIN_WIDTH && width <= MAX_WIDTH) {
+					sidebarWidth = width;
+				}
+			}
+		}
+	});
+
+	function handleResizeStart(e: MouseEvent) {
+		if (isCollapsed) return;
+		isResizing = true;
+		resizeStartX = e.clientX;
+		resizeStartWidth = sidebarWidth;
+		document.addEventListener('mousemove', handleResizeMove);
+		document.addEventListener('mouseup', handleResizeEnd);
+		e.preventDefault();
+	}
+
+	function handleResizeMove(e: MouseEvent) {
+		if (!isResizing) return;
+		const deltaX = e.clientX - resizeStartX;
+		const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, resizeStartWidth + deltaX));
+		sidebarWidth = newWidth;
+	}
+
+	function handleResizeEnd() {
+		if (isResizing) {
+			isResizing = false;
+			// Save to localStorage
+			if (typeof window !== 'undefined') {
+				localStorage.setItem('filterSidebarWidth', sidebarWidth.toString());
+			}
+			document.removeEventListener('mousemove', handleResizeMove);
+			document.removeEventListener('mouseup', handleResizeEnd);
+		}
+	}
+
+	// Cleanup event listeners on unmount
+	$effect(() => {
+		return () => {
+			if (isResizing) {
+				document.removeEventListener('mousemove', handleResizeMove);
+				document.removeEventListener('mouseup', handleResizeEnd);
+			}
+		};
+	});
 
 	// Filtered spaces and apps based on search query
 	let filteredSpaces = $derived(
@@ -76,7 +147,7 @@
 	);
 </script>
 
-<div class="relative flex-shrink-0 {isCollapsed ? 'w-8' : ''}">
+<div class="relative flex-shrink-0 {isCollapsed ? 'w-8' : ''}" style={isCollapsed ? '' : `width: ${sidebarWidth}px`}>
 	<!-- Toggle Button at the top - always visible, flush against border -->
 	<button
 		type="button"
@@ -95,7 +166,7 @@
 		</svg>
 	</button>
 	
-	<aside class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 {isCollapsed ? 'w-0 overflow-hidden' : 'w-64'}">
+	<aside class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 {isCollapsed ? 'w-0 overflow-hidden' : 'overflow-x-hidden'}" style={isCollapsed ? '' : `width: ${sidebarWidth}px`}>
 	{#if !isCollapsed}
 		<div class="p-4 border-b border-gray-200 dark:border-gray-700">
 			<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Filters</h2>
@@ -168,7 +239,7 @@
 								e.stopPropagation();
 								onSelectAllSpaces();
 							}}
-							class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+							class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
 						>
 							All
 						</button>
@@ -179,14 +250,14 @@
 								e.stopPropagation();
 								onDeselectAllSpaces();
 							}}
-							class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+							class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
 						>
 							None
 						</button>
 					</div>
 				</div>
 				{#if spacesExpanded}
-					<div class="space-y-2">
+					<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden">
 						{#each filteredSpaces as space (space.id)}
 							{@const isChecked = selectedSpaces.has(space.id)}
 							{@const spaceId = space.id}
@@ -238,7 +309,7 @@
 					<button
 						type="button"
 						onclick={onSelectAllApps}
-						class="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+						class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
 					>
 						All
 					</button>
@@ -246,14 +317,14 @@
 					<button
 						type="button"
 						onclick={onDeselectAllApps}
-						class="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+						class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
 					>
 						None
 					</button>
 				</div>
 			</div>
 			{#if appsExpanded}
-				<div class="space-y-2">
+				<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden">
 					{#each filteredApps as app (`${tenantHostname}-${app.id}`)}
 						{@const isLoaded = loadedAppIds.has(app.id)}
 						{@const isLoading = loadingAppIds.has(app.id)}
@@ -319,7 +390,7 @@
 					<button
 						type="button"
 						onclick={onSelectAllSheets}
-						class="text-xs text-green-600 dark:text-green-400 hover:underline"
+						class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
 					>
 						All
 					</button>
@@ -327,7 +398,7 @@
 					<button
 						type="button"
 						onclick={onDeselectAllSheets}
-						class="text-xs text-green-600 dark:text-green-400 hover:underline"
+						class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
 					>
 						None
 					</button>
@@ -368,7 +439,7 @@
 						</button>
 					{/if}
 				</div>
-				<div class="space-y-2">
+				<div class="space-y-2 max-h-[240px] overflow-y-auto overflow-x-hidden">
 					{#each filteredSheets as sheet (sheet.id)}
 						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
 							<input
@@ -389,8 +460,78 @@
 			{/if}
 		</div>
 
+		<!-- Sheet State Filters -->
+		<div>
+			<div class="flex items-center justify-between mb-3">
+				<button
+					type="button"
+					onclick={() => (sheetStatesExpanded = !sheetStatesExpanded)}
+					class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+				>
+					<svg
+						class="w-4 h-4 transition-transform {sheetStatesExpanded ? 'rotate-90' : ''}"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M9 5l7 7-7 7"
+						/>
+					</svg>
+					<span>Sheet States ({selectedSheetStates.size}/3)</span>
+				</button>
+				<div class="flex gap-1">
+					<button
+						type="button"
+						onclick={onSelectAllSheetStates}
+						class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
+					>
+						All
+					</button>
+					<span class="text-xs text-gray-400">|</span>
+					<button
+						type="button"
+						onclick={onDeselectAllSheetStates}
+						class="text-xs text-gray-600 dark:text-gray-400 hover:underline"
+					>
+						None
+					</button>
+				</div>
+			</div>
+			{#if sheetStatesExpanded}
+				<div class="space-y-2">
+					{#each ['Public', 'Community', 'Private'] as state}
+						{@const isChecked = selectedSheetStates.has(state)}
+						<label class="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-2 py-1.5 -mx-2">
+							<input
+								type="checkbox"
+								checked={isChecked}
+								onchange={() => onToggleSheetState(state)}
+								class="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+							/>
+							<span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{state}</span>
+						</label>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
 		</div>
 	{/if}
 	</aside>
+	
+	<!-- Resize Handle -->
+	{#if !isCollapsed}
+		<button
+			type="button"
+			aria-label="Resize filter panel"
+			onmousedown={handleResizeStart}
+			class="absolute top-8 right-0 w-1 h-[calc(100%-2rem)] cursor-col-resize hover:bg-blue-500 dark:hover:bg-blue-400 transition-colors z-10 {isResizing ? 'bg-blue-500 dark:bg-blue-400' : ''} border-0 p-0 bg-transparent"
+			title="Drag to resize"
+		></button>
+	{/if}
 </div>
 
