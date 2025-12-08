@@ -11,6 +11,12 @@
   let isCheckingAuth = $state(true);
   let authState = $state<any>(null);
   
+  let pageTitle = $derived(
+    isAuthenticated && authState?.tenantName 
+      ? `${authState.tenantName} - Analytics Notebook` 
+      : 'Analytics Notebook'
+  );
+  
   onMount(() => {
     // Subscribe to auth store
     const unsubscribe = authStore.subscribe(state => {
@@ -199,6 +205,9 @@
   }
 </script>
 
+<svelte:head>
+  <title>{pageTitle}</title>
+</svelte:head>
 
 <header class="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800">
 	<div class="px-[10px] max-w-full">
