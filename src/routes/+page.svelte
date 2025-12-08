@@ -204,11 +204,11 @@
 	<div class="px-[10px] max-w-full">
 		<div class="flex justify-between items-center h-16">
 			<!-- Logo and Navigation -->
-			<div class="flex items-center">
+			<div class="flex items-center pl-4">
 				<div class="flex-shrink-0 relative">
 					<div class="flex items-center">
 						<Logo />
-						<h1 class="text-xl font-semibold text-gray-900 dark:text-white">Analytics Notebook</h1>
+						<h1 class="text-xl font-semibold text-gray-600 dark:text-gray-400">Analytics Notebook</h1>
 					</div>
 				</div>
 			</div>
