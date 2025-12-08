@@ -171,15 +171,16 @@
 	}
 
 	/**
-	 * Merges new sheet metadata into the existing metadata map, avoiding race conditions.
-	 * Reads current state right before updating to get latest changes from concurrent loads.
+	 * Merges new sheet metadata into the existing metadata map.
+	 * Modifies the currentMetadata map in place for better performance.
+	 * @param currentMetadata - Current metadata map to merge into (will be modified)
 	 * @param newMetadata - Map of new metadata to merge
-	 * @returns Updated metadata map
+	 * @returns The same currentMetadata map (for convenience)
 	 */
 	function mergeSheetMetadata(
+		currentMetadata: Map<string, { approved: boolean; published: boolean }>,
 		newMetadata: Map<string, { approved: boolean; published: boolean }>
 	): Map<string, { approved: boolean; published: boolean }> {
-		const currentMetadata = new Map(sheetMetadata);
 		newMetadata.forEach((value, key) => {
 			currentMetadata.set(key, value);
 		});
@@ -202,8 +203,10 @@
 		sheets = [...sheets, ...newSheets];
 
 		// Extract and merge metadata
+		// Read current state right before updating to get latest changes from concurrent loads
+		const currentMetadata = new Map(sheetMetadata);
 		const newMetadata = extractSheetMetadata(structureData.sheets);
-		sheetMetadata = mergeSheetMetadata(newMetadata);
+		sheetMetadata = mergeSheetMetadata(currentMetadata, newMetadata);
 	}
 
 	const availableSheets = $derived.by(() => {
