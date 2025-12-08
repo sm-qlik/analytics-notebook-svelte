@@ -1032,7 +1032,6 @@
 					
 					if (structureData.sheets && Array.isArray(structureData.sheets)) {
 						const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
-						const newMetadata = new Map(sheetMetadata);
 						structureData.sheets.forEach((sheet: any) => {
 							const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
 							const sheetId = sheet?.qProperty?.qInfo?.qId || '';
@@ -1047,11 +1046,21 @@
 									approved,
 									published
 								});
-								newMetadata.set(sheetId, { approved, published });
 							}
 						});
 						sheets = [...sheets, ...newSheets];
-						sheetMetadata = newMetadata;
+						// Merge new metadata with existing metadata to avoid race conditions
+						// Read current state right before updating to get latest changes from concurrent loads
+						const currentMetadata = new Map(sheetMetadata);
+						structureData.sheets.forEach((sheet: any) => {
+							const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+							if (sheetId) {
+								const approved = !!sheet.approved;
+								const published = !!sheet.published;
+								currentMetadata.set(sheetId, { approved, published });
+							}
+						});
+						sheetMetadata = currentMetadata;
 					}
 					// Build index but don't trigger search - let the effect handle it
 					buildSearchableIndex();
@@ -1134,7 +1143,6 @@
 			
 			if (structureData.sheets && Array.isArray(structureData.sheets)) {
 				const newSheets: Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }> = [];
-				const newMetadata = new Map(sheetMetadata);
 				structureData.sheets.forEach((sheet: any) => {
 					const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
 					const sheetId = sheet?.qProperty?.qInfo?.qId || '';
@@ -1149,11 +1157,21 @@
 							approved,
 							published
 						});
-						newMetadata.set(sheetId, { approved, published });
 					}
 				});
 				sheets = [...sheets, ...newSheets];
-				sheetMetadata = newMetadata;
+				// Merge new metadata with existing metadata to avoid race conditions
+				// Read current state right before updating to get latest changes from concurrent loads
+				const currentMetadata = new Map(sheetMetadata);
+				structureData.sheets.forEach((sheet: any) => {
+					const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+					if (sheetId) {
+						const approved = !!sheet.approved;
+						const published = !!sheet.published;
+						currentMetadata.set(sheetId, { approved, published });
+					}
+				});
+				sheetMetadata = currentMetadata;
 			}
 			buildSearchableIndex();
 			
