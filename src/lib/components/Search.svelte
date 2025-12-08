@@ -59,6 +59,9 @@
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }>>([]);
 	let sheetMetadata = $state<Map<string, { approved: boolean; published: boolean }>>(new Map());
 	let loadingAppIds = $state<Set<string>>(new Set());
+	
+	// Mutex for serializing sheet metadata updates to prevent race conditions
+	let metadataUpdateQueue: Promise<void> = Promise.resolve();
 	let currentTenantHostname = $state('');
 	let currentTenantUrl = $state<string | null>(null);
 	let hasNewDataPending = $state(false);
@@ -171,20 +174,36 @@
 	}
 
 	/**
-	 * Merges new sheet metadata into the existing metadata map.
-	 * Modifies the currentMetadata map in place for better performance.
-	 * @param currentMetadata - Current metadata map to merge into (will be modified)
+	 * Atomically merges new sheet metadata into the existing metadata map.
+	 * Uses a promise queue to serialize updates and prevent race conditions.
 	 * @param newMetadata - Map of new metadata to merge
-	 * @returns The same currentMetadata map (for convenience)
+	 * @returns Promise that resolves when the update is complete
 	 */
-	function mergeSheetMetadata(
-		currentMetadata: Map<string, { approved: boolean; published: boolean }>,
+	async function updateSheetMetadata(
 		newMetadata: Map<string, { approved: boolean; published: boolean }>
-	): Map<string, { approved: boolean; published: boolean }> {
-		newMetadata.forEach((value, key) => {
-			currentMetadata.set(key, value);
+	): Promise<void> {
+		// Queue this update to run after all previous updates complete
+		const previousUpdate = metadataUpdateQueue;
+		let resolveUpdate: () => void;
+		const thisUpdate = new Promise<void>((resolve) => {
+			resolveUpdate = resolve;
 		});
-		return currentMetadata;
+		
+		metadataUpdateQueue = previousUpdate.then(async () => {
+			// Read the latest state right before updating (atomic read)
+			const currentMetadata = new Map(sheetMetadata);
+			// Merge new metadata into the copy
+			newMetadata.forEach((value, key) => {
+				currentMetadata.set(key, value);
+			});
+			// Atomically update the state
+			sheetMetadata = currentMetadata;
+			// Resolve this update's promise
+			resolveUpdate!();
+		});
+		
+		// Wait for this update to complete
+		await thisUpdate;
 	}
 
 	/**
@@ -193,7 +212,7 @@
 	 * @param appName - Name of the app
 	 * @param appId - ID of the app
 	 */
-	function processSheets(structureData: any, appName: string, appId: string): void {
+	async function processSheets(structureData: any, appName: string, appId: string): Promise<void> {
 		if (!structureData.sheets || !Array.isArray(structureData.sheets)) {
 			return;
 		}
@@ -202,11 +221,9 @@
 		const newSheets = extractSheetObjects(structureData.sheets, appName, appId);
 		sheets = [...sheets, ...newSheets];
 
-		// Extract and merge metadata
-		// Read current state right before updating to get latest changes from concurrent loads
-		const currentMetadata = new Map(sheetMetadata);
+		// Extract and atomically merge metadata (serialized via promise queue)
 		const newMetadata = extractSheetMetadata(structureData.sheets);
-		sheetMetadata = mergeSheetMetadata(currentMetadata, newMetadata);
+		await updateSheetMetadata(newMetadata);
 	}
 
 	const availableSheets = $derived.by(() => {
@@ -1119,7 +1136,7 @@
 					}];
 					qlikApps = updatedApps;
 					
-					processSheets(structureData, appName, appId);
+					await processSheets(structureData, appName, appId);
 					// Build index but don't trigger search - let the effect handle it
 					buildSearchableIndex();
 					// Trigger incremental search for this new app's data
@@ -1199,7 +1216,7 @@
 			
 			qlikApps = [...qlikApps, { id: appId, name: appName, data: structureData }];
 			
-			processSheets(structureData, appName, appId);
+			await processSheets(structureData, appName, appId);
 			buildSearchableIndex();
 			
 			loadAppDataInBackground();
@@ -1245,6 +1262,8 @@
 		selectedTypes = new Set();
 		selectedSheetStates = new Set();
 		sheetMetadata = new Map();
+		// Reset the metadata update queue to prevent stale updates from overwriting fresh state
+		metadataUpdateQueue = Promise.resolve();
 		
 		await loadAppList();
 	}
