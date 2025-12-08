@@ -1406,7 +1406,7 @@
 				}
 				// Check if "Personal" is selected and app has no space
 				const personalSelected = selectedSpaces.has(PERSONAL_SPACE_ID);
-				const appHasNoSpace = !app.spaceId || app.spaceId === '';
+				const appHasNoSpace = !app.spaceId;
 				if (personalSelected && appHasNoSpace) {
 					// Allow this app through the space filter
 				} else if (!app.spaceId || !selectedSpaces.has(app.spaceId)) {
