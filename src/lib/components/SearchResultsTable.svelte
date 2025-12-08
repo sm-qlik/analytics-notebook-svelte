@@ -21,28 +21,216 @@
 
 	interface Props {
 		results: SearchResult[];
+		totalResults: number;
+		currentPage: number;
+		totalPages: number;
+		onPageChange: (page: number) => void;
+		onNextPage: () => void;
+		onPreviousPage: () => void;
 		searchQuery: string;
 		onExportToExcel: () => void;
 		onCopyToClipboard: (text: string, id: string) => void;
 		copiedDefinitionId: string | null;
 	}
 
-	let { results, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId }: Props = $props();
+	let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId }: Props = $props();
 
-	// Highlighting disabled due to performance issues with large result sets
-	const shouldHighlight = $derived(false);
+	// Debounced search query for highlighting (only updates after user stops typing for 2 seconds)
+	let debouncedQuery = $state('');
+	let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+	let isHighlighting = $state(false);
 	
-	function shouldHighlightText(text: string, query: string): boolean {
-		return false;
+	// Debounce the search query for highlighting with 2 second delay
+	$effect(() => {
+		const query = searchQuery.trim();
+		
+		// Cancel any pending highlighting immediately when query changes
+		isHighlighting = false;
+		
+		// Clear existing timeout
+		if (debounceTimeout) {
+			clearTimeout(debounceTimeout);
+			debounceTimeout = null;
+		}
+		
+		// Update immediately if query is empty (for instant clearing of highlights)
+		if (!query) {
+			debouncedQuery = '';
+			highlightCache.clear();
+			isHighlighting = false;
+			return;
+		}
+		
+		// Store the current query for comparison in timeout
+		const currentQuery = query;
+		
+		// Debounce for 0.5 seconds (500ms) - wait until user stops typing
+		debounceTimeout = setTimeout(() => {
+			// Double-check query hasn't changed (using current searchQuery, not the captured one)
+			const latestQuery = searchQuery.trim();
+			if (latestQuery === currentQuery && latestQuery.length > 0) {
+				debouncedQuery = latestQuery;
+				highlightCache.clear(); // Clear cache when new query is applied
+				// Set highlighting flag after a tiny delay to ensure cache is cleared
+				setTimeout(() => {
+					if (searchQuery.trim() === latestQuery) {
+						isHighlighting = true;
+					}
+				}, 10);
+			}
+			debounceTimeout = null;
+		}, 500);
+		
+		return () => {
+			if (debounceTimeout) {
+				clearTimeout(debounceTimeout);
+				debounceTimeout = null;
+			}
+			isHighlighting = false;
+		};
+	});
+	
+	// Highlighting enabled only for substantial queries (2+ characters) and visible results
+	// Only highlight when not currently typing (debounced query is set and highlighting is active)
+	const shouldHighlight = $derived.by(() => {
+		const query = debouncedQuery;
+		return isHighlighting && query.length >= 2 && results.length > 0 && results.length <= 20;
+	});
+	
+	// Cache for highlighted text (limited size)
+	let highlightCache = new Map<string, string>();
+	const MAX_CACHE_SIZE = 500;
+	let lastQuery = '';
+	
+	// Clear cache when debounced query changes (using untrack to avoid reactivity issues)
+	$effect(() => {
+		const currentQuery = debouncedQuery;
+		if (currentQuery !== lastQuery) {
+			highlightCache.clear();
+			lastQuery = currentQuery;
+		}
+	});
+	
+	// Efficient highlighting function - only processes substantial strings
+	function highlightText(text: any, query: string): string {
+		// Ensure text is a string
+		if (text === null || text === undefined) {
+			return '';
+		}
+		const textStr = String(text);
+		
+		// Early returns for efficiency - check conditions directly
+		if (!isHighlighting || !query || query.length < 2 || !textStr || textStr.length === 0) {
+			return textStr || '';
+		}
+		
+		// Only process substantial strings (skip very short or very long strings)
+		if (textStr.length < 2 || textStr.length > 5000) {
+			return textStr;
+		}
+		
+		// Check if highlighting should be enabled
+		if (results.length === 0 || results.length > 20) {
+			return textStr;
+		}
+		
+		// Use cache with full text in key to avoid collisions
+		const cacheKey = `${textStr.length > 200 ? textStr.substring(0, 200) : textStr}|${query}`;
+		if (highlightCache.has(cacheKey)) {
+			return highlightCache.get(cacheKey)!;
+		}
+		
+		const queryLower = query.toLowerCase();
+		const textLower = textStr.toLowerCase();
+		
+		// Quick check - if no match, return original
+		if (!textLower.includes(queryLower)) {
+			if (highlightCache.size < MAX_CACHE_SIZE) {
+				highlightCache.set(cacheKey, text);
+			}
+			return text;
+		}
+		
+		// Find matches efficiently (limit to first 10 matches for performance)
+		const matches: Array<{ start: number; end: number }> = [];
+		const queryLength = query.length;
+		let searchIndex = 0;
+		const MAX_MATCHES = 10;
+		
+		while (searchIndex < textLower.length && matches.length < MAX_MATCHES) {
+			const index = textLower.indexOf(queryLower, searchIndex);
+			if (index === -1) break;
+			matches.push({ start: index, end: index + queryLength });
+			searchIndex = index + queryLength;
+		}
+		
+		if (matches.length === 0) {
+			if (highlightCache.size < MAX_CACHE_SIZE) {
+				highlightCache.set(cacheKey, textStr);
+			}
+			return textStr;
+		}
+		
+		// Build highlighted string efficiently using array join
+		const parts: string[] = [];
+		let lastIndex = 0;
+		
+		for (const match of matches) {
+			// Add text before match
+			if (match.start > lastIndex) {
+				parts.push(escapeHtml(textStr.substring(lastIndex, match.start)));
+			}
+			// Add highlighted match
+			parts.push(`<mark class="bg-yellow-200 dark:bg-yellow-800">${escapeHtml(textStr.substring(match.start, match.end))}</mark>`);
+			lastIndex = match.end;
+		}
+		
+		// Add remaining text
+		if (lastIndex < textStr.length) {
+			parts.push(escapeHtml(textStr.substring(lastIndex)));
+		}
+		
+		const result = parts.join('');
+		
+		// Cache result (with size limit)
+		if (highlightCache.size < MAX_CACHE_SIZE) {
+			highlightCache.set(cacheKey, result);
+		} else if (highlightCache.size >= MAX_CACHE_SIZE) {
+			// Clear cache if it gets too large
+			highlightCache.clear();
+			highlightCache.set(cacheKey, result);
+		}
+		
+		return result;
+	}
+	
+	// Efficient HTML escaping (using regex instead of DOM to avoid SSR issues)
+	function escapeHtml(text: string): string {
+		return text
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+	
+	// Function to check if text should be highlighted (for background color)
+	function shouldHighlightText(text: any, query: string): boolean {
+		if (!shouldHighlight || !query || !text) return false;
+		const textStr = String(text);
+		return textStr.toLowerCase().includes(query.toLowerCase());
 	}
 </script>
 
-<div class="flex flex-col flex-1 min-h-0 space-y-4">
-	<div class="flex items-center justify-between flex-shrink-0">
+<div class="flex flex-col">
+	<div class="flex items-center justify-between flex-shrink-0 mb-4">
 		<div class="text-sm text-gray-600 dark:text-gray-400">
-			Found {results.length} result{results.length !== 1 ? 's' : ''}
+			Found {totalResults} result{totalResults !== 1 ? 's' : ''}
 			{#if searchQuery.trim()}
 				for "{searchQuery}"
+			{/if}
+			{#if totalPages > 1}
+				<span class="ml-2">(Page {currentPage} of {totalPages})</span>
 			{/if}
 		</div>
 		{#if results.length > 0}
@@ -71,8 +259,9 @@
 	</div>
 
 	{#if results.length > 0}
-		<div class="overflow-y-auto overflow-x-hidden flex-1 min-h-0 min-w-0">
-			<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 min-w-0">
+		<div class="flex flex-col bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+			<div class="overflow-x-hidden min-w-0">
+				<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 min-w-0">
 				<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
 					<tr>
 					  <th class="w-[13%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Labels</th>
@@ -168,8 +357,8 @@
 								{#if labels.length > 0}
 									<div class="flex flex-wrap gap-1">
 										{#each labels as label}
-											<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 {shouldHighlightText(label, searchQuery) ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : ''}" title={label}>
-												{label}
+											<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 {shouldHighlightText(label, debouncedQuery) ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : ''}" title={label}>
+												{@html highlightText(label, debouncedQuery)}
 											</span>
 										{/each}
 									</div>
@@ -179,8 +368,8 @@
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="flex items-start gap-2 group">
-									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
-										{definition}
+									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
+										{@html highlightText(definition, debouncedQuery)}
 									</div>
 									{#if definition !== 'N/A'}
 										<button
@@ -223,8 +412,8 @@
 								</div>
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
-								<div class="truncate {shouldHighlightText(result.app || '', searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
-									{result.app} <span class="text-gray-400 dark:text-gray-500">({result.appId?.slice(0, 8)}...)</span>
+								<div class="truncate {shouldHighlightText(result.app || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
+									{@html highlightText(result.app || '', debouncedQuery)} <span class="text-gray-400 dark:text-gray-500">({result.appId?.slice(0, 8)}...)</span>
 								</div>
 							</td>
 						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
@@ -233,14 +422,14 @@
 									href={sheetUrl}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(sheetName, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
+									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
 									title={sheetName}
 								>
-									{sheetName}
+									{@html highlightText(sheetName, debouncedQuery)}
 								</a>
 							{:else}
-								<div class="truncate {shouldHighlightText(sheetName, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={sheetName}>
-									{sheetName}
+								<div class="truncate {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={sheetName}>
+									{@html highlightText(sheetName, debouncedQuery)}
 								</div>
 							{/if}
 						</td>
@@ -253,10 +442,10 @@
 									href={chartUrl}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(chartTitle, searchQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
+									class="text-blue-600 dark:text-blue-400 hover:underline truncate block {shouldHighlightText(chartTitle, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}"
 									title={chartTitle}
 								>
-									{chartTitle}
+									{@html highlightText(chartTitle, debouncedQuery)}
 								</a>
 							{:else}
 								<span class="text-gray-400">N/A</span>
@@ -266,6 +455,86 @@
 					{/each}
 				</tbody>
 			</table>
+			</div>
+			
+			{#if totalPages > 1}
+			{@const pageNumbers = (() => {
+				const pages: (number | string)[] = [];
+				if (totalPages <= 7) {
+					// Show all pages if 7 or fewer
+					for (let i = 1; i <= totalPages; i++) {
+						pages.push(i);
+					}
+				} else {
+					// Always show first page
+					pages.push(1);
+					
+					if (currentPage <= 4) {
+						// Near the start: show 1, 2, 3, 4, 5, ..., last
+						for (let i = 2; i <= 5; i++) {
+							pages.push(i);
+						}
+						pages.push('...');
+						pages.push(totalPages);
+					} else if (currentPage >= totalPages - 3) {
+						// Near the end: show 1, ..., last-4, last-3, last-2, last-1, last
+						pages.push('...');
+						for (let i = totalPages - 4; i <= totalPages; i++) {
+							pages.push(i);
+						}
+					} else {
+						// In the middle: show 1, ..., current-1, current, current+1, ..., last
+						pages.push('...');
+						for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+							pages.push(i);
+						}
+						pages.push('...');
+						pages.push(totalPages);
+					}
+				}
+				return pages;
+			})()}
+			<div class="flex items-center justify-between flex-shrink-0 px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						onclick={onPreviousPage}
+						disabled={currentPage === 1}
+						class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+					>
+						Previous
+					</button>
+					<div class="flex items-center gap-1">
+						{#each pageNumbers as pageNum}
+							{#if typeof pageNum === 'number'}
+								<button
+									type="button"
+									onclick={() => onPageChange(pageNum)}
+									class="px-3 py-1 text-sm font-medium rounded-md transition-colors {currentPage === pageNum 
+										? 'bg-blue-600 text-white dark:bg-blue-500' 
+										: 'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'}"
+								>
+									{pageNum}
+								</button>
+							{:else}
+								<span class="px-2 text-gray-500 dark:text-gray-400">...</span>
+							{/if}
+						{/each}
+					</div>
+					<button
+						type="button"
+						onclick={onNextPage}
+						disabled={currentPage === totalPages}
+						class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+					>
+						Next
+					</button>
+				</div>
+				<div class="text-sm text-gray-600 dark:text-gray-400">
+					Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, totalResults)} of {totalResults} results
+				</div>
+			</div>
+			{/if}
 		</div>
 	{:else}
 		<div

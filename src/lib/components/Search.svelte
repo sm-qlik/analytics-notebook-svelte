@@ -63,9 +63,38 @@
 	let lastRefreshedAppsCount = $state(0);
 	let isAuthConfigured = $state(false);
 	let isSidebarCollapsed = $state(false);
+	let currentPage = $state(1);
+	const itemsPerPage = 20;
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
 		return new Set(oldSet);
+	}
+	
+	// Calculate paginated results
+	const paginatedResults = $derived.by(() => {
+		const startIndex = (currentPage - 1) * itemsPerPage;
+		const endIndex = startIndex + itemsPerPage;
+		return searchResults.slice(startIndex, endIndex);
+	});
+	
+	const totalPages = $derived(Math.ceil(searchResults.length / itemsPerPage));
+	
+	function goToPage(page: number) {
+		if (page >= 1 && page <= totalPages) {
+			currentPage = page;
+		}
+	}
+	
+	function goToNextPage() {
+		if (currentPage < totalPages) {
+			currentPage++;
+		}
+	}
+	
+	function goToPreviousPage() {
+		if (currentPage > 1) {
+			currentPage--;
+		}
 	}
 
 	function getSheetNameFromId(sheetId: string | null): string | null {
@@ -831,7 +860,8 @@
 		// Update searchableIndex to use the version with labelsString
 		searchableIndex = indexWithLabelsString;
 		
-		performSearch();
+		// Don't automatically trigger search here - let the effect handle it
+		// This prevents loops when apps are loading
 	}
 
 	// Configure Qlik API auth once - returns the API module
@@ -998,7 +1028,15 @@
 						});
 						sheets = [...sheets, ...newSheets];
 					}
+					// Build index but don't trigger search - let the effect handle it
 					buildSearchableIndex();
+					// Trigger incremental search for this new app's data
+					if (qlikApps.length > 0) {
+						// Use untrack to prevent reactive loops
+						untrack(() => {
+							performSearch(true);
+						});
+					}
 				} catch (err: any) {
 				} finally {
 					// Always close the session
@@ -1306,11 +1344,16 @@
 	
 	searchResults = allResults;
 	isSearching = false;
+	// Don't reset page here - the effect will handle it based on query changes
 	}
 
 	const typeOptions = ['Master Measure', 'Master Dimension', 'Sheet Measure', 'Sheet Dimension'];
 	
 	let searchEffectTimeout: ReturnType<typeof setTimeout> | null = null;
+	
+	// Track previous values to detect actual changes
+	let previousQuery = '';
+	let previousFilterSizes = { spaces: 0, apps: 0, sheets: 0, types: 0 };
 	
 	// Effect for filter/query changes - triggers search when filters change
 	$effect(() => {
@@ -1320,6 +1363,28 @@
 		const appsSize = selectedApps.size;
 		const sheetsSize = selectedSheets.size;
 		const typesSize = selectedTypes.size;
+		
+		// Check if query or filters actually changed
+		const queryChanged = query !== previousQuery;
+		const filtersChanged = 
+			spacesSize !== previousFilterSizes.spaces ||
+			appsSize !== previousFilterSizes.apps ||
+			sheetsSize !== previousFilterSizes.sheets ||
+			typesSize !== previousFilterSizes.types;
+		
+		// Reset page if query or filters changed
+		if (queryChanged || filtersChanged) {
+			currentPage = 1;
+			previousQuery = query;
+		}
+		
+		// Update filter sizes
+		previousFilterSizes = { spaces: spacesSize, apps: appsSize, sheets: sheetsSize, types: typesSize };
+		
+		// Only trigger search if something actually changed
+		if (!queryChanged && !filtersChanged) {
+			return;
+		}
 		
 		if (searchEffectTimeout) {
 			clearTimeout(searchEffectTimeout);
@@ -1350,23 +1415,30 @@
 		};
 	});
 	
-	// Effect to track when new data is available
+	// Track previous loading state to detect completion
+	let previousLoadingState = false;
+	
+	// Effect to track when new data is available and loading completes
 	$effect(() => {
 		const currentAppsCount = qlikApps.length;
+		const loading = isLoadingAppData;
+		
+		// Track when apps are added
 		if (currentAppsCount > lastRefreshedAppsCount) {
 			hasNewDataPending = true;
 		}
-	});
-	
-	// Auto-refresh table when loading completes
-	$effect(() => {
-		const loading = isLoadingAppData;
-		if (!loading && hasNewDataPending && qlikApps.length > 0) {
+		
+		// Only trigger search when loading transitions from true to false (completion)
+		// This prevents loops during loading
+		if (previousLoadingState && !loading && hasNewDataPending && qlikApps.length > 0) {
 			// Loading just completed - auto-refresh the table
 			hasNewDataPending = false;
 			lastRefreshedAppsCount = qlikApps.length;
-			performSearch();
+			// Use incremental search to avoid clearing existing results
+			performSearch(true);
 		}
+		
+		previousLoadingState = loading;
 	});
 	
 	function refreshTable() {
@@ -1573,20 +1645,22 @@
 				</div>
 			</div>
 		{:else}
-			{#if isLoadingAppData && appItems.length > 0}
-				<LoadingIndicator
-					current={loadingProgress.current}
-					total={loadingProgress.total}
-					currentApp={loadingProgress.currentApp}
-					hasNewData={hasNewDataPending}
-					onRefreshTable={refreshTable}
-				/>
-			{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
-				<CompletionIndicator
-					totalApps={appItems.length}
-					onRefresh={refreshData}
-				/>
-			{/if}
+			<div class="flex-shrink-0">
+				{#if isLoadingAppData && appItems.length > 0}
+					<LoadingIndicator
+						current={loadingProgress.current}
+						total={loadingProgress.total}
+						currentApp={loadingProgress.currentApp}
+						hasNewData={hasNewDataPending}
+						onRefreshTable={refreshTable}
+					/>
+				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
+					<CompletionIndicator
+						totalApps={appItems.length}
+						onRefresh={refreshData}
+					/>
+				{/if}
+			</div>
 			
 			<SearchInput
 				value={searchQuery}
@@ -1651,41 +1725,49 @@
 				</div>
 			{/if}
 		
-			{#if isSearching && searchResults.length === 0}
-				<div class="flex flex-col flex-1 min-h-0 items-center justify-center">
-					<div class="flex flex-col items-center gap-4">
-						<svg
-							class="animate-spin h-8 w-8 text-blue-600 dark:text-blue-400"
-							xmlns="http://www.w3.org/2000/svg"
-							fill="none"
-							viewBox="0 0 24 24"
-						>
-							<circle
-								class="opacity-25"
-								cx="12"
-								cy="12"
-								r="10"
-								stroke="currentColor"
-								stroke-width="4"
-							/>
-							<path
-								class="opacity-75"
-								fill="currentColor"
-								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-							/>
-						</svg>
-						<p class="text-sm text-gray-600 dark:text-gray-400">Searching...</p>
+			<div class="flex flex-col">
+				{#if isSearching && searchResults.length === 0}
+					<div class="flex flex-col flex-1 min-h-0 items-center justify-center">
+						<div class="flex flex-col items-center gap-4">
+							<svg
+								class="animate-spin h-8 w-8 text-blue-600 dark:text-blue-400"
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+							>
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								/>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+								/>
+							</svg>
+							<p class="text-sm text-gray-600 dark:text-gray-400">Searching...</p>
+						</div>
 					</div>
-				</div>
-			{:else}
-				<SearchResultsTable
-					results={searchResults}
+				{:else}
+					<SearchResultsTable
+					results={paginatedResults}
+					totalResults={searchResults.length}
+					currentPage={currentPage}
+					totalPages={totalPages}
+					onPageChange={goToPage}
+					onNextPage={goToNextPage}
+					onPreviousPage={goToPreviousPage}
 					{searchQuery}
 					onExportToExcel={exportToExcel}
 					onCopyToClipboard={copyToClipboard}
 					copiedDefinitionId={copiedDefinitionId}
-				/>
-			{/if}
+					/>
+				{/if}
+			</div>
 		{/if}
 	</div>
 </div>
