@@ -1311,13 +1311,15 @@
 		}
 		
 		// Track existing paths to avoid duplicates when appending incrementally
-		const existingPaths = incremental ? new Set(searchResults.map(r => r.path)) : new Set();
+		// Use appId:path as the key since paths are only unique within an app
+		const existingPaths = incremental ? new Set(searchResults.map(r => `${r.appId}:${r.path}`)) : new Set();
 		
 		for (const item of candidateResults) {
 			const sheetName = item.sheetName || item.sheet;
 			
 			// Skip if already in results (when appending incrementally)
-			if (incremental && existingPaths.has(item.path)) {
+			// Use appId:path to match the deduplication logic used when building the index
+			if (incremental && existingPaths.has(`${item.appId}:${item.path}`)) {
 				continue;
 			}
 			
@@ -1359,7 +1361,8 @@
 			}
 
 			// Add to unfilteredResults (only if not incremental or not already present)
-			if (!incremental || !unfilteredResults.find(r => r.path === item.path)) {
+			// Use appId:path to match the deduplication logic used when building the index
+			if (!incremental || !unfilteredResults.find(r => r.appId === item.appId && r.path === item.path)) {
 				unfilteredResults.push({
 					path: item.path,
 					object: item.object,
