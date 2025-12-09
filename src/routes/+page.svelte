@@ -2,6 +2,7 @@
   import Logo from './Logo.svelte';
   import Search from '$lib/components/Search.svelte';
   import Login from '$lib/components/Login.svelte';
+  import ManageDataModal from '$lib/components/ManageDataModal.svelte';
   import { authStore } from '$lib/stores/auth';
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
@@ -12,6 +13,20 @@
   let isAuthenticated = $state(false);
   let isCheckingAuth = $state(true);
   let authState = $state<any>(null);
+  let isManageDataOpen = $state(false);
+  let refreshTrigger = $state(0);
+  
+  function handleDataDeleted(cacheKey: string, isCurrentTenant: boolean) {
+    if (isCurrentTenant) {
+      // Trigger refresh - will detect cache is empty and reload everything
+      refreshTrigger++;
+    }
+  }
+  
+  function handleCheckForUpdates() {
+    // Trigger a check for updates (only loads new/changed apps)
+    refreshTrigger++;
+  }
   
   let pageTitle = $derived(
     authState?.isAuthenticated && authState?.tenantName
@@ -265,7 +280,7 @@
 {:else if isAuthenticated}
 	<main class="flex-1 px-[10px] py-8 w-full flex flex-col min-h-0 max-w-full">
 		<!-- Search Component -->
-		<Search />
+		<Search {refreshTrigger} />
 		
 		<!-- Template Container -->
 		<div id="templateContainer">
@@ -284,7 +299,26 @@
 				<p>Analytics Notebook v{version}</p>
 			</div>
 			<div class="flex items-center space-x-4">
+				<button
+					onclick={() => isManageDataOpen = true}
+					class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-1.5"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+					</svg>
+					Manage data
+				</button>
 			</div>
 		</div>
 	</div>
 </footer>
+
+<!-- Manage Data Modal -->
+<ManageDataModal
+	isOpen={isManageDataOpen}
+	currentTenantUrl={authState?.tenantUrl}
+	currentUserId={authState?.user?.id}
+	onClose={() => isManageDataOpen = false}
+	onDataDeleted={handleDataDeleted}
+	onCheckForUpdates={handleCheckForUpdates}
+/>
