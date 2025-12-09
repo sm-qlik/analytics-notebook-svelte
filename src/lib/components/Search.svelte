@@ -1335,7 +1335,7 @@
 			async function processApp(appItem: AppItem): Promise<'loaded' | 'skipped' | 'error'> {
 				const appId = appItem.resourceId;
 				const appName = appItem.name || appItem.resourceId;
-				const appUpdatedAt = appItem.updatedAt || new Date().toISOString();
+				const appUpdatedAt = appItem.updatedAt;
 				const appSpaceId = appItem.spaceId;
 				
 				// Check if app matches current space filter
@@ -1383,7 +1383,7 @@
 							appSpaceId
 						);
 					}
-
+					
 					const updatedApps = [...qlikApps, {
 						id: appId,
 						name: appName,
@@ -1484,7 +1484,7 @@
 			const { qix } = qlikApi;
 			
 			const appName = appItem.name || appId;
-			const appUpdatedAt = appItem.updatedAt || new Date().toISOString();
+			const appUpdatedAt = appItem.updatedAt;
 			const appSpaceId = appItem.spaceId;
 			
 			loadingAppIds = new Set([...loadingAppIds, appId]);

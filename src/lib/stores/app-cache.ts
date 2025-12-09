@@ -29,7 +29,7 @@ export interface AppItem {
 	resourceId: string;
 	name: string;
 	spaceId?: string;
-	updatedAt?: string;
+	updatedAt: string;
 	[key: string]: any;
 }
 
@@ -386,7 +386,7 @@ class AppCacheDB {
 			if (!cached) {
 				// App not in cache - needs to be loaded
 				toLoad.push(appItem);
-			} else if (appItem.updatedAt && cached.updatedAt !== appItem.updatedAt) {
+			} else if (cached.updatedAt !== appItem.updatedAt) {
 				// App has been updated - needs to be reloaded
 				toLoad.push(appItem);
 			} else {
