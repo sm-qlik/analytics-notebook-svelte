@@ -1102,9 +1102,10 @@ class AppCacheDB {
 				// Process each discovered tenant/user
 				for (const cacheKey of tenantUserKeys) {
 					// Parse tenant URL and user ID from cache key
-					const parts = cacheKey.split(':');
-					const userId = parts.pop() || '';
-					const tenantUrl = parts.join(':');
+					// Use lastIndexOf to handle tenant URLs with ports (e.g., tenant.com:8080)
+					const lastColon = cacheKey.lastIndexOf(':');
+					const tenantUrl = lastColon !== -1 ? cacheKey.slice(0, lastColon) : '';
+					const userId = lastColon !== -1 ? cacheKey.slice(lastColon + 1) : '';
 
 					// Count apps for this tenant/user
 					const appsIndex = appsStore.index('tenantUser');
