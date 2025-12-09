@@ -751,10 +751,8 @@
 						
 							if (qDefStr) {
 								objectToStore = { ...obj, qDef: qDefStr };
-							} else {
-								console.log(JSON.stringify(obj));
-							}
-
+							} 
+							
 						} else {
 							// obj.qDef exists - ensure it's a string
 							const qDefStr = safeExtractQDefString(obj.qDef);
