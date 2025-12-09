@@ -1565,6 +1565,8 @@
 		hasNewDataPending = false;
 		lastRefreshedAppsCount = 0;
 		cacheLoadedAppsCount = 0;
+		pendingAppsToLoad = [];
+		isLoadingPaused = false;
 		// Note: We don't reset isAuthConfigured as the same auth session can be reused
 		
 		selectedSpaces = new Set();
@@ -2164,7 +2166,7 @@
 					/>
 				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
 					<CompletionIndicator
-						totalApps={appItems.length}
+						totalApps={qlikApps.length}
 						cachedCount={cacheLoadedAppsCount}
 						onRefresh={refreshData}
 					/>
