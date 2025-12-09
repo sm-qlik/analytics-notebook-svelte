@@ -7,7 +7,7 @@
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
   import { base } from '$app/paths';
   
-  const version = import.meta.env.APP_VERSION || '0.1.0';
+  const version = import.meta.env.APP_VERSION;
   
   let isAuthenticated = $state(false);
   let isCheckingAuth = $state(true);
