@@ -8,9 +8,10 @@
 		currentUserId?: string;
 		onClose: () => void;
 		onDataDeleted: (cacheKey: string, isCurrentTenant: boolean) => void;
+		onCheckForUpdates?: () => void;
 	}
 
-	let { isOpen, currentTenantUrl, currentUserId, onClose, onDataDeleted }: Props = $props();
+	let { isOpen, currentTenantUrl, currentUserId, onClose, onDataDeleted, onCheckForUpdates }: Props = $props();
 
 	interface CachedTenant {
 		cacheKey: string;
@@ -63,6 +64,13 @@
 		} finally {
 			deletingCacheKey = null;
 		}
+	}
+	
+	function handleCheckForUpdates(tenant: CachedTenant) {
+		// Only allow checking updates for the current/active tenant
+		if (tenant.cacheKey !== currentCacheKey) return;
+		onCheckForUpdates?.();
+		onClose();
 	}
 
 	function formatDate(timestamp: number | null): string {
@@ -182,11 +190,25 @@
 											{formatDate(tenant.lastSyncAt)}
 										</span>
 									</div>
-								</div>
+							</div>
+							<div class="flex items-center gap-1 flex-shrink-0">
+								{#if tenant.cacheKey === currentCacheKey && onCheckForUpdates}
+									<button
+										onclick={() => handleCheckForUpdates(tenant)}
+										disabled={deletingCacheKey !== null}
+										class="p-2 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+										aria-label="Check for updates for {tenant.tenantUrl}"
+										title="Check for updated apps"
+									>
+										<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+										</svg>
+									</button>
+								{/if}
 								<button
 									onclick={() => deleteTenantData(tenant)}
 									disabled={deletingCacheKey !== null}
-									class="flex-shrink-0 p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+									class="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 									aria-label="Delete cached data for {tenant.tenantUrl}"
 									title="Delete all cached data for this tenant"
 								>
@@ -199,6 +221,7 @@
 									{/if}
 								</button>
 							</div>
+						</div>
 						{/each}
 					</div>
 				{/if}

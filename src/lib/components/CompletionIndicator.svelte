@@ -5,9 +5,10 @@
 		cachedCount?: number;
 		failedCount?: number;
 		onRefresh: () => void;
+		onDismiss?: () => void;
 	}
 
-	let { totalApps, expectedTotal, cachedCount = 0, failedCount = 0, onRefresh }: Props = $props();
+	let { totalApps, expectedTotal, cachedCount = 0, failedCount = 0, onRefresh, onDismiss }: Props = $props();
 	let showConfirmDialog = $state(false);
 	
 	function handleRefreshClick() {
@@ -60,17 +61,32 @@
 				</p>
 			</div>
 		</div>
-		<button
-			type="button"
-			onclick={handleRefreshClick}
-			class="ml-4 flex items-center gap-2 px-3 py-1.5 text-sm font-medium {hasFailed ? 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/30' : 'text-green-700 dark:text-green-300 border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/30'} bg-white dark:bg-gray-800 border rounded-lg transition-colors"
-			title="Refresh data from Qlik tenant"
-		>
-			<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-			</svg>
-			Refresh
-		</button>
+		<div class="flex items-center gap-2 ml-4">
+			<button
+				type="button"
+				onclick={handleRefreshClick}
+				class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium {hasFailed ? 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/30' : 'text-green-700 dark:text-green-300 border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/30'} bg-white dark:bg-gray-800 border rounded-lg transition-colors"
+				title="Refresh data from Qlik tenant"
+			>
+				<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+				</svg>
+				Refresh
+			</button>
+			{#if onDismiss}
+				<button
+					type="button"
+					onclick={onDismiss}
+					class="p-1.5 {hasFailed ? 'text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-800/50' : 'text-green-500 dark:text-green-400 hover:text-green-700 dark:hover:text-green-200 hover:bg-green-100 dark:hover:bg-green-800/50'} rounded transition-colors"
+					aria-label="Dismiss"
+					title="Dismiss"
+				>
+					<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
+		</div>
 	</div>
 </div>
 

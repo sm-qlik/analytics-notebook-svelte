@@ -8,9 +8,10 @@
 		isPaused?: boolean;
 		pendingCount?: number;
 		onRefreshTable?: () => void;
+		onDismiss?: () => void;
 	}
 
-	let { current, total, currentApp, hasNewData = false, cachedCount = 0, isPaused = false, pendingCount = 0, onRefreshTable }: Props = $props();
+	let { current, total, currentApp, hasNewData = false, cachedCount = 0, isPaused = false, pendingCount = 0, onRefreshTable, onDismiss }: Props = $props();
 </script>
 
 {#if isPaused && pendingCount > 0}
@@ -35,6 +36,19 @@
 					></div>
 				</div>
 			</div>
+			{#if onDismiss}
+				<button
+					type="button"
+					onclick={onDismiss}
+					class="flex-shrink-0 p-1 text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-800/50 rounded transition-colors"
+					aria-label="Dismiss"
+					title="Dismiss"
+				>
+					<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
 		</div>
 	</div>
 {:else}
@@ -77,6 +91,7 @@
 					Refresh Table
 				</button>
 			{/if}
+			<!-- No dismiss button during active loading - only available when paused/finished -->
 		</div>
 	</div>
 {/if}

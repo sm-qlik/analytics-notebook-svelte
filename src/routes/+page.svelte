@@ -21,6 +21,11 @@
     }
   }
   
+  function handleCheckForUpdates() {
+    // Trigger a check for updates (incremental refresh, not full)
+    refreshTrigger++;
+  }
+  
   let pageTitle = $derived(
     authState?.isAuthenticated && authState?.tenantName
       ? `${authState.tenantName} - Analytics Notebook`
@@ -310,7 +315,8 @@
 <ManageDataModal
 	isOpen={isManageDataOpen}
 	currentTenantUrl={authState?.tenantUrl}
-	currentUserId={authState?.userId}
+	currentUserId={authState?.user?.id}
 	onClose={() => isManageDataOpen = false}
 	onDataDeleted={handleDataDeleted}
+	onCheckForUpdates={handleCheckForUpdates}
 />

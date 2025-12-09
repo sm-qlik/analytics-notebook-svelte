@@ -97,6 +97,7 @@
 	let failedAppsCount = $state(0); // Track how many apps failed to load
 	let pendingAppsToLoad = $state<AppItem[]>([]); // Apps waiting to be loaded (paused due to space filter)
 	let isLoadingPaused = $state(false); // Track if loading is paused due to space filter
+	let isLoadingDismissed = $state(false); // Track if loading indicator was dismissed by user
 	const itemsPerPage = 20;
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
@@ -588,6 +589,19 @@
 		const searchItems: SearchIndexItem[] = [];
 		const processedPaths = new Set<string>();
 
+		// Build a map of sheet ID to approved/published status
+		const sheetStatusMap = new Map<string, { approved: boolean; published: boolean }>();
+		const sheetsArray = structureData.sheets || [];
+		sheetsArray.forEach((sheet: any) => {
+			const sheetId = sheet?.qProperty?.qInfo?.qId || '';
+			if (sheetId) {
+				sheetStatusMap.set(sheetId, {
+					approved: !!sheet.approved,
+					published: !!sheet.published
+				});
+			}
+		});
+
 		// Helper to extract qDef string
 		function safeExtractQDef(value: any): string {
 			if (value === null || value === undefined) return '';
@@ -600,6 +614,11 @@
 				}
 			}
 			return '';
+		}
+
+		// Helper to get sheet status
+		function getSheetStatus(sheetId: string): { approved: boolean; published: boolean } {
+			return sheetStatusMap.get(sheetId) || { approved: false, published: false };
 		}
 
 		// Process master dimensions
@@ -624,6 +643,8 @@
 				sheetId: '',
 				sheetName: '',
 				sheetUrl: '',
+				sheetApproved: false,
+				sheetPublished: false,
 				objectType: 'Master Dimension',
 				title: typeof title === 'string' ? title : '',
 				labels: Array.isArray(labels) ? labels.filter((l: any) => typeof l === 'string') : [],
@@ -658,6 +679,8 @@
 				sheetId: '',
 				sheetName: '',
 				sheetUrl: '',
+				sheetApproved: false,
+				sheetPublished: false,
 				objectType: 'Master Measure',
 				title: typeof title === 'string' ? title : '',
 				labels: [],
@@ -688,6 +711,7 @@
 			const definition = safeExtractQDef(dim.qDef) || safeExtractQDef(dim);
 			const labels = dim.qFieldLabels || [];
 			const title = dim.title || '';
+			const sheetStatus = getSheetStatus(sheetId);
 
 			searchItems.push({
 				id,
@@ -698,6 +722,8 @@
 				sheetId,
 				sheetName,
 				sheetUrl,
+				sheetApproved: sheetStatus.approved,
+				sheetPublished: sheetStatus.published,
 				objectType: 'Sheet Dimension',
 				title: typeof title === 'string' ? title : '',
 				labels: Array.isArray(labels) ? labels.filter((l: any) => typeof l === 'string') : [],
@@ -727,6 +753,7 @@
 			const chartUrl = measure.chartUrl || '';
 			const definition = safeExtractQDef(measure.qDef) || safeExtractQDef(measure);
 			const title = measure.title || '';
+			const sheetStatus = getSheetStatus(sheetId);
 
 			searchItems.push({
 				id,
@@ -737,6 +764,8 @@
 				sheetId,
 				sheetName,
 				sheetUrl,
+				sheetApproved: sheetStatus.approved,
+				sheetPublished: sheetStatus.published,
 				objectType: 'Sheet Measure',
 				title: typeof title === 'string' ? title : '',
 				labels: [],
@@ -1051,62 +1080,130 @@
 				spaceId: app.spaceId || app.space?.resourceId || undefined
 			}));
 			
-			// Check cache and determine which apps need loading
+			// Check cache and determine which apps need loading - LIGHTWEIGHT comparison
 			if (tenantUrl && userId) {
-				const { toLoad, toRemove, unchanged } = await appCache.getAppsToUpdate(
+				const { toLoad, toRemove, unchangedMetadata } = await appCache.getAppsToUpdateLightweight(
 					tenantUrl,
 					userId,
 					allApps
 				);
 				
-				console.log(`Cache analysis: ${unchanged.length} unchanged, ${toLoad.length} to load, ${toRemove.length} to remove`);
+				console.log(`Cache analysis: ${unchangedMetadata.length} unchanged, ${toLoad.length} to load, ${toRemove.length} to remove`);
 				
-				// Remove apps that no longer exist
+				// Remove apps that no longer exist (both cache and search index)
 				if (toRemove.length > 0) {
 					console.log(`Removing ${toRemove.length} apps that no longer exist:`, toRemove);
 					await appCache.removeApps(tenantUrl, userId, toRemove);
 				}
 				
-				// Load unchanged apps from cache immediately
-				if (unchanged.length > 0) {
-					// Only store lightweight metadata in memory
-					const cachedQlikApps = unchanged.map(cached => ({
+				// Remove search index for apps that need updating (will be rebuilt when loaded)
+				// For new apps this is a no-op, for updated apps it clears stale entries
+				for (const app of toLoad) {
+					await appCache.removeSearchIndexForApp(tenantUrl, userId, app.resourceId);
+				}
+				
+				// Load unchanged apps from cache - OPTIMIZED PATH (metadata only)
+				if (unchangedMetadata.length > 0) {
+					// Use lightweight metadata directly (no full structure data loaded)
+					qlikApps = unchangedMetadata.map(cached => ({
 						id: cached.id,
 						name: cached.name,
 						spaceId: cached.spaceId
 					}));
-					qlikApps = cachedQlikApps;
-					cacheLoadedAppsCount = unchanged.length;
+					cacheLoadedAppsCount = unchangedMetadata.length;
 					
-					// Process sheets and store search index for cached apps
-					for (const cached of unchanged) {
-						await processSheets(cached.data, cached.name, cached.id);
+					// Check if search index already exists and has all the apps we need
+					const indexedAppIds = await appCache.getIndexedAppIds(tenantUrl, userId);
+					const allUnchangedIndexed = unchangedMetadata.every(app => indexedAppIds.has(app.id));
+					
+					if (allUnchangedIndexed && indexedAppIds.size > 0) {
+						// FAST PATH: Search index already exists with all cached apps
+						// Load sheets directly from search index instead of re-processing each app
+						console.log(`Using existing search index (${indexedAppIds.size} apps indexed)`);
 						
-						// Store search items in IndexedDB if not already there
-						if (tenantUrl && userId) {
-							await storeAppSearchIndex(
-								cached.id,
-								cached.name,
-								cached.spaceId,
-								cached.data,
-								tenantUrl,
-								userId
-							);
+						const indexedSheets = await appCache.getSheetsFromSearchIndex(tenantUrl, userId);
+						sheets = indexedSheets.map(s => ({
+							name: s.sheetName,
+							app: s.appName,
+							appId: s.appId,
+							sheetId: s.sheetId,
+							approved: s.approved,
+							published: s.published
+						}));
+						
+						// Populate sheetMetadata map for sheet state filtering
+						const newMetadata = new Map<string, { approved: boolean; published: boolean }>();
+						indexedSheets.forEach(s => {
+							if (s.sheetId) {
+								newMetadata.set(s.sheetId, { approved: s.approved, published: s.published });
+							}
+						});
+						sheetMetadata = newMetadata;
+						
+						console.log(`Loaded ${sheets.length} sheets from search index`);
+					} else {
+						// SLOW PATH: Need to rebuild search index from cached app data
+						// This only happens on first load or after DB schema changes
+						console.log(`Rebuilding search index for ${unchangedMetadata.length} cached apps...`);
+						
+						// Need to load full data only for apps missing from index
+						const appsNeedingIndexRebuild = unchangedMetadata.filter(app => !indexedAppIds.has(app.id));
+						for (const appMeta of appsNeedingIndexRebuild) {
+							const cachedData = await appCache.getAppData(tenantUrl, userId, appMeta.id);
+							if (cachedData?.data) {
+								await processSheets(cachedData.data, cachedData.name, cachedData.id);
+								await storeAppSearchIndex(
+									cachedData.id,
+									cachedData.name,
+									cachedData.spaceId,
+									cachedData.data,
+									tenantUrl,
+									userId
+								);
+							}
 						}
+						
+						// Load sheets from index for apps that were already indexed
+						if (indexedAppIds.size > 0) {
+							const indexedSheets = await appCache.getSheetsFromSearchIndex(tenantUrl, userId);
+							const existingSheetIds = new Set(sheets.map(s => s.sheetId));
+							const newSheets = indexedSheets
+								.filter(s => !existingSheetIds.has(s.sheetId))
+								.map(s => ({
+									name: s.sheetName,
+									app: s.appName,
+									appId: s.appId,
+									sheetId: s.sheetId,
+									approved: s.approved,
+									published: s.published
+								}));
+							sheets = [...sheets, ...newSheets];
+							
+							// Update sheetMetadata map with sheets from index
+							const newMetadata = new Map(sheetMetadata);
+							indexedSheets.forEach(s => {
+								if (s.sheetId && !newMetadata.has(s.sheetId)) {
+									newMetadata.set(s.sheetId, { approved: s.approved, published: s.published });
+								}
+							});
+							sheetMetadata = newMetadata;
+						}
+						
+						console.log(`Rebuilt search index for ${appsNeedingIndexRebuild.length} apps`);
 					}
 					
 					// Trigger search
 					await performIndexedDBSearch();
 					
-					console.log(`Loaded ${unchanged.length} apps from cache`);
+					console.log(`Loaded ${unchangedMetadata.length} apps from cache`);
 				}
 				
 				// Load remaining apps in background (only the ones that need loading)
 				if (toLoad.length > 0) {
 					loadAppDataInBackground(toLoad);
-				} else if (unchanged.length > 0) {
+				} else if (unchangedMetadata.length > 0) {
 					// All apps loaded from cache, update metadata
-					await appCache.setMetadata(tenantUrl, userId, unchanged.map(a => a.id));
+					await appCache.setMetadata(tenantUrl, userId, unchangedMetadata.map(a => a.id));
 				}
 			} else {
 				// No cache available, load all apps
@@ -1143,6 +1240,7 @@
 		
 		isLoadingAppData = true;
 		isLoadingPaused = false;
+		isLoadingDismissed = false;
 		loadingProgress = { current: qlikApps.length, total: appItems.length, currentApp: '' };
 		
 		try {
@@ -1448,6 +1546,7 @@
 		failedAppsCount = 0;
 		pendingAppsToLoad = [];
 		isLoadingPaused = false;
+		isLoadingDismissed = false;
 		// Note: We don't reset isAuthConfigured as the same auth session can be reused
 		
 		selectedSpaces = new Set();
@@ -1858,7 +1957,7 @@
 						pendingCount={pendingAppsToLoad.length}
 						onRefreshTable={refreshTable}
 					/>
-				{:else if isLoadingPaused && pendingAppsToLoad.length > 0 && appItems.length > 0}
+				{:else if isLoadingPaused && pendingAppsToLoad.length > 0 && appItems.length > 0 && !isLoadingDismissed}
 					<LoadingIndicator
 						current={qlikApps.length}
 						total={appItems.length}
@@ -1867,14 +1966,16 @@
 						cachedCount={cacheLoadedAppsCount}
 						isPaused={true}
 						pendingCount={pendingAppsToLoad.length}
+						onDismiss={() => isLoadingDismissed = true}
 					/>
-				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
+				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 && !isLoadingDismissed}
 					<CompletionIndicator
 						totalApps={qlikApps.length}
 						expectedTotal={appItems.length}
 						cachedCount={cacheLoadedAppsCount}
 						failedCount={failedAppsCount}
 						onRefresh={refreshData}
+						onDismiss={() => isLoadingDismissed = true}
 					/>
 				{/if}
 			</div>

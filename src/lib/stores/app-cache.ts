@@ -52,6 +52,8 @@ export interface SearchIndexItem {
 	sheetId: string;         // Index for sheet filtering (empty string if none)
 	sheetName: string;
 	sheetUrl: string;
+	sheetApproved: boolean;  // Sheet approval status (Public)
+	sheetPublished: boolean; // Sheet published status (Community)
 	objectType: string;      // Index for type filtering
 	title: string;
 	labels: string[];
@@ -504,6 +506,84 @@ class AppCacheDB {
 		return { toLoad, toRemove, unchanged };
 	}
 
+	/**
+	 * Lightweight version that only loads metadata for comparison (not full structure data)
+	 * Much faster when you just need to know what changed vs unchanged
+	 */
+	async getAppsToUpdateLightweight(
+		tenantUrl: string,
+		userId: string,
+		currentAppItems: AppItem[]
+	): Promise<{
+		toLoad: AppItem[]; // Apps that need to be loaded (new or updated)
+		toRemove: string[]; // App IDs that should be removed (no longer exist)
+		unchangedMetadata: Array<{ id: string; name: string; spaceId?: string; updatedAt: string }>; // Lightweight metadata only
+	}> {
+		const db = await this.openDB();
+		const cacheKey = getCacheKey(tenantUrl, userId);
+
+		// Only load metadata fields, not full structure data
+		const cachedMetadata = await new Promise<Array<{ id: string; name: string; spaceId?: string; updatedAt: string }>>((resolve, reject) => {
+			const transaction = db.transaction([APPS_STORE], 'readonly');
+			const store = transaction.objectStore(APPS_STORE);
+			const index = store.index('tenantUser');
+			const request = index.openCursor(IDBKeyRange.only(cacheKey));
+
+			const metadata: Array<{ id: string; name: string; spaceId?: string; updatedAt: string }> = [];
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				if (cursor) {
+					// Only extract metadata fields, skip the heavy 'data' field
+					const record = cursor.value;
+					metadata.push({
+						id: record.id || record.appId,
+						name: record.name,
+						spaceId: record.spaceId,
+						updatedAt: record.updatedAt
+					});
+					cursor.continue();
+				} else {
+					resolve(metadata);
+				}
+			};
+
+			request.onerror = () => reject(request.error);
+		});
+
+		const cachedAppMap = new Map(cachedMetadata.map(app => [app.id, app]));
+		const currentAppIds = new Set(currentAppItems.map(item => item.resourceId));
+
+		const toLoad: AppItem[] = [];
+		const unchangedMetadata: Array<{ id: string; name: string; spaceId?: string; updatedAt: string }> = [];
+		const toRemove: string[] = [];
+
+		// Check which apps need to be loaded or are unchanged
+		for (const appItem of currentAppItems) {
+			const cached = cachedAppMap.get(appItem.resourceId);
+
+			if (!cached) {
+				// App not in cache - needs to be loaded
+				toLoad.push(appItem);
+			} else if (cached.updatedAt !== appItem.updatedAt) {
+				// App has been updated - needs to be reloaded
+				toLoad.push(appItem);
+			} else {
+				// App hasn't changed - keep the lightweight metadata
+				unchangedMetadata.push(cached);
+			}
+		}
+
+		// Check which cached apps should be removed (no longer in API response)
+		for (const cachedApp of cachedMetadata) {
+			if (!currentAppIds.has(cachedApp.id)) {
+				toRemove.push(cachedApp.id);
+			}
+		}
+
+		return { toLoad, toRemove, unchangedMetadata };
+	}
+
 	// ============================================
 	// Search Index Methods
 	// ============================================
@@ -861,7 +941,89 @@ class AppCacheDB {
 	}
 
 	/**
+	 * Get unique sheets from the search index (much faster than re-processing app data)
+	 * Returns sheet info extracted from indexed search items
+	 */
+	async getSheetsFromSearchIndex(
+		tenantUrl: string,
+		userId: string
+	): Promise<Array<{ sheetId: string; sheetName: string; appId: string; appName: string; approved: boolean; published: boolean }>> {
+		const db = await this.openDB();
+		const cacheKey = getCacheKey(tenantUrl, userId);
+
+		return new Promise((resolve, reject) => {
+			const transaction = db.transaction([SEARCH_INDEX_STORE], 'readonly');
+			const store = transaction.objectStore(SEARCH_INDEX_STORE);
+			const index = store.index('tenantUser');
+			const request = index.openCursor(IDBKeyRange.only(cacheKey));
+
+			const sheetsMap = new Map<string, { sheetId: string; sheetName: string; appId: string; appName: string; approved: boolean; published: boolean }>();
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				
+				if (cursor) {
+					const item: SearchIndexItem = cursor.value;
+					// Only add if this item has sheet info and we haven't seen this sheet yet
+					if (item.sheetId && !sheetsMap.has(item.sheetId)) {
+						sheetsMap.set(item.sheetId, {
+							sheetId: item.sheetId,
+							sheetName: item.sheetName,
+							appId: item.appId,
+							appName: item.appName,
+							approved: item.sheetApproved ?? false,
+							published: item.sheetPublished ?? false
+						});
+					}
+					cursor.continue();
+				} else {
+					resolve(Array.from(sheetsMap.values()));
+				}
+			};
+
+			request.onerror = () => {
+				reject(request.error);
+			};
+		});
+	}
+
+	/**
+	 * Get app IDs that have entries in the search index
+	 */
+	async getIndexedAppIds(tenantUrl: string, userId: string): Promise<Set<string>> {
+		const db = await this.openDB();
+		const cacheKey = getCacheKey(tenantUrl, userId);
+
+		return new Promise((resolve, reject) => {
+			const transaction = db.transaction([SEARCH_INDEX_STORE], 'readonly');
+			const store = transaction.objectStore(SEARCH_INDEX_STORE);
+			const index = store.index('tenantUser');
+			const request = index.openCursor(IDBKeyRange.only(cacheKey));
+
+			const appIds = new Set<string>();
+
+			request.onsuccess = (event) => {
+				const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+				
+				if (cursor) {
+					const item: SearchIndexItem = cursor.value;
+					appIds.add(item.appId);
+					cursor.continue();
+				} else {
+					resolve(appIds);
+				}
+			};
+
+			request.onerror = () => {
+				reject(request.error);
+			};
+		});
+	}
+
+	/**
 	 * Get all cached tenant/user combinations with stats
+	 * Discovers tenants from apps store (not just metadata) to handle cases where
+	 * metadata wasn't saved yet (e.g., loading interrupted)
 	 */
 	async listCachedTenants(): Promise<Array<{
 		cacheKey: string;
@@ -881,11 +1043,53 @@ class AppCacheDB {
 			const appsStore = transaction.objectStore(APPS_STORE);
 			const searchStore = transaction.objectStore(SEARCH_INDEX_STORE);
 
-			// Get all metadata entries
-			const metadataRequest = metadataStore.getAll();
+			// First, discover all unique tenantUser keys from apps store
+			const appsRequest = appsStore.getAll();
 
-			metadataRequest.onsuccess = async () => {
-				const metadataEntries: CacheMetadata[] = metadataRequest.result || [];
+			appsRequest.onsuccess = async () => {
+				const apps = appsRequest.result || [];
+				
+				// Get unique tenantUser keys from apps
+				const tenantUserKeys = new Set<string>();
+				apps.forEach((app: any) => {
+					if (app.tenantUser) {
+						tenantUserKeys.add(app.tenantUser);
+					}
+				});
+
+				// Also check search index for any additional tenantUser keys
+				const searchRequest = searchStore.index('tenantUser').openKeyCursor();
+				const searchKeys = new Set<string>();
+				
+				await new Promise<void>((res) => {
+					searchRequest.onsuccess = (event) => {
+						const cursor = (event.target as IDBRequest<IDBCursor>).result;
+						if (cursor) {
+							searchKeys.add(cursor.key as string);
+							cursor.continue();
+						} else {
+							res();
+						}
+					};
+					searchRequest.onerror = () => res();
+				});
+
+				// Merge keys
+				searchKeys.forEach(key => tenantUserKeys.add(key));
+
+				// Get metadata for lastSyncAt timestamps
+				const metadataRequest = metadataStore.getAll();
+				const metadataMap = new Map<string, CacheMetadata>();
+				
+				await new Promise<void>((res) => {
+					metadataRequest.onsuccess = () => {
+						const entries: CacheMetadata[] = metadataRequest.result || [];
+						entries.forEach(m => metadataMap.set(m.key, m));
+						res();
+					};
+					metadataRequest.onerror = () => res();
+				});
+
 				const results: Array<{
 					cacheKey: string;
 					tenantUrl: string;
@@ -895,9 +1099,8 @@ class AppCacheDB {
 					lastSyncAt: number | null;
 				}> = [];
 
-				// Process each metadata entry
-				for (const metadata of metadataEntries) {
-					const cacheKey = metadata.key;
+				// Process each discovered tenant/user
+				for (const cacheKey of tenantUserKeys) {
 					// Parse tenant URL and user ID from cache key
 					const parts = cacheKey.split(':');
 					const userId = parts.pop() || '';
@@ -921,21 +1124,24 @@ class AppCacheDB {
 						searchCountRequest.onerror = () => res(0);
 					});
 
+					// Get metadata if it exists
+					const metadata = metadataMap.get(cacheKey);
+
 					results.push({
 						cacheKey,
 						tenantUrl,
 						userId,
 						appCount,
 						searchIndexCount,
-						lastSyncAt: metadata.lastSyncAt || null
+						lastSyncAt: metadata?.lastSyncAt || null
 					});
 				}
 
 				resolve(results);
 			};
 
-			metadataRequest.onerror = () => {
-				reject(metadataRequest.error);
+			appsRequest.onerror = () => {
+				reject(appsRequest.error);
 			};
 		});
 	}
