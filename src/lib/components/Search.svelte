@@ -308,11 +308,9 @@
 						appId,
 						appName,
 						dim,
-					{
 						getSheetNameFromId,
 						processedObjects,
 						indexPush
-					}
 				);
 			}
 			});
@@ -326,13 +324,9 @@
 						appId,
 						appName,
 						measure,
-					{
 						getSheetNameFromId,
-						extractLabels,
-						extractSearchableFields,
 						processedObjects,
 						indexPush
-					}
 				);
 			}
 			});
@@ -368,13 +362,9 @@
 						appId,
 						appName,
 						libraryDimForLabels || dim, // Use library dim if available for label extraction
-					{
-						getSheetNameFromId,
-						extractLabels,
-						extractSearchableFields,
-						processedObjects,
-						indexPush
-					}
+					getSheetNameFromId,
+					processedObjects,
+					indexPush
 					);
 				} else if (dim.qLibraryId) {
 					// Library dimension reference - look up from master dimensions
@@ -397,13 +387,9 @@
 							appId,
 							appName,
 							libraryDim, // Pass the full library dimension object
-							{
-								getSheetNameFromId,
-								extractLabels,
-								extractSearchableFields,
-								processedObjects,
-								indexPush
-							}							
+							getSheetNameFromId,
+							processedObjects,
+							indexPush						
 						);
 					}
 				}
@@ -440,13 +426,9 @@
 						appId,
 						appName,
 						libraryMeasureForLabels || measure, // Use library measure if available for label extraction
-											{
 						getSheetNameFromId,
-						extractLabels,
-						extractSearchableFields,
 						processedObjects,
 						indexPush
-					}
 					);
 				} else if (measure.qLibraryId) {
 					// Library measure reference - look up from master measures
@@ -469,13 +451,9 @@
 							appId,
 							appName,
 							libraryMeasure, // Pass the full library measure object
-							{
-								getSheetNameFromId,
-								extractLabels,
-								extractSearchableFields,
-								processedObjects,
-								indexPush
-							}
+							getSheetNameFromId,
+							processedObjects,
+							indexPush
 						);
 					}
 				}

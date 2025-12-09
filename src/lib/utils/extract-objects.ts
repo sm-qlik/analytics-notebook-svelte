@@ -17,9 +17,17 @@ export type ExtractContext = {
   chartName?: string | null;
 };
 
-export type Helpers = {
-  getSheetNameFromId: (sheetId: string | null) => string | null;
-  processedObjects: Map<string, boolean>;
+// Helpers type removed; pass dependencies directly to extractObjects
+
+export function extractObjects(
+  obj: any,
+  path = '',
+  context: ExtractContext = {},
+  appId: string,
+  appName: string,
+  parentObj: any,
+  getSheetNameFromId: (sheetId: string | null) => string | null,
+  processedObjects: Map<string, boolean>,
   indexPush: (item: {
     path: string;
     object: any;
@@ -38,21 +46,10 @@ export type Helpers = {
     searchableText: string;
     labels: string[];
     title: string;
-  }) => void;
-};
-
-export function extractObjects(
-  obj: any,
-  path = '',
-  context: ExtractContext = {},
-  appId: string,
-  appName: string,
-  parentObj: any,
-  helpers: Helpers
+  }) => void
 ) {
   if (obj === null || obj === undefined) return;
-
-  const { getSheetNameFromId, processedObjects, indexPush } = helpers;
+  // getSheetNameFromId, processedObjects, indexPush are passed directly
 
   let inMasterDimensions = context.inMasterDimensions || false;
   let inMasterMeasures = context.inMasterMeasures || false;
@@ -295,12 +292,12 @@ export function extractObjects(
           inSheetMeasures: path === 'sheetMeasures',
         };
       }
-      extractObjects(item, `${path}[${index}]`, itemContext, appId, appName, item, helpers);
+      extractObjects(item, `${path}[${index}]`, itemContext, appId, appName, item, getSheetNameFromId, processedObjects, indexPush);
     });
   } else if (typeof obj === 'object' && obj !== null) {
     Object.keys(obj).forEach((key) => {
       const newPath = path ? `${path}.${key}` : key;
-      extractObjects((obj as any)[key], newPath, newContext, appId, appName, obj, helpers);
+      extractObjects((obj as any)[key], newPath, newContext, appId, appName, obj, getSheetNameFromId, processedObjects, indexPush);
     });
   }
 }
