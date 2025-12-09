@@ -3,6 +3,7 @@
 	import { authStore } from '$lib/stores/auth';
 	import { loadQlikAPI, configureQlikAuthOnce, resetAuthConfiguration } from '$lib/utils/qlik-auth';
 	import { EngineInterface } from '$lib/utils/engine-interface';
+	import { appCache, type AppItem, type CachedAppData } from '$lib/stores/app-cache';
 	import Fuse from 'fuse.js';
 	import * as XLSX from 'xlsx';
 	import FilterSidebar from './FilterSidebar.svelte';
@@ -54,7 +55,7 @@
 	
 	let qlikApps = $state<Array<{ id: string; name: string; data: any }>>([]);
 	let apps = $state<Array<{ name: string; id: string; spaceId?: string }>>([]);
-	let appItems = $state<Array<{ resourceId: string; name: string; spaceId?: string }>>([]);
+	let appItems = $state<AppItem[]>([]);
 	let spaces = $state<Array<{ name: string; id: string }>>([]);
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }>>([]);
 	let sheetMetadata = $state<Map<string, { approved: boolean; published: boolean }>>(new Map());
@@ -64,11 +65,13 @@
 	let metadataUpdateQueue: Promise<void> = Promise.resolve();
 	let currentTenantHostname = $state('');
 	let currentTenantUrl = $state<string | null>(null);
+	let currentUserId = $state<string | null>(null);
 	let hasNewDataPending = $state(false);
 	let lastRefreshedAppsCount = $state(0);
 	let isAuthConfigured = $state(false);
 	let isSidebarCollapsed = $state(false);
 	let currentPage = $state(1);
+	let cacheLoadedAppsCount = $state(0); // Track how many apps were loaded from cache
 	const itemsPerPage = 20;
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
@@ -1031,15 +1034,60 @@
 				return;
 			}
 			
-		const { spaces: spacesApi } = qlikApi;
-		
-		const spacesResponse = await spacesApi.getSpaces({ limit: 100 });
-		if (spacesResponse.status !== 200) {
-			throw new Error(`Failed to get spaces: ${spacesResponse.status}`);
-		}
+			const { spaces: spacesApi } = qlikApi;
 			
-			const allSpaces = spacesResponse.data?.data || [];
-			spaces = allSpaces
+			// Fetch all spaces with pagination
+			const allSpacesData: any[] = [];
+			let nextUrl: string | null = null;
+			let pageCount = 0;
+			const maxPages = 100; // Safety limit
+			
+			// First request
+			let spacesResponse = await spacesApi.getSpaces({ limit: 100 });
+			if (spacesResponse.status !== 200) {
+				throw new Error(`Failed to get spaces: ${spacesResponse.status}`);
+			}
+			
+			allSpacesData.push(...(spacesResponse.data?.data || []));
+			nextUrl = spacesResponse.data?.links?.next?.href || null;
+			pageCount++;
+			
+			// Follow pagination links
+			while (nextUrl && pageCount < maxPages) {
+				try {
+					// Extract query params from the next URL
+					const url = new URL(nextUrl, 'https://placeholder.com');
+					const searchParams = new URLSearchParams(url.search);
+					
+					spacesResponse = await spacesApi.getSpaces({ 
+						limit: 100,
+						...Object.fromEntries(searchParams.entries())
+					});
+					
+					if (spacesResponse.status !== 200) {
+						console.warn(`Spaces pagination request failed with status ${spacesResponse.status}, stopping`);
+						break;
+					}
+					
+					const pageSpaces = spacesResponse.data?.data || [];
+					if (pageSpaces.length === 0) {
+						break;
+					}
+					
+					allSpacesData.push(...pageSpaces);
+					nextUrl = spacesResponse.data?.links?.next?.href || null;
+					pageCount++;
+					
+					console.log(`Loaded page ${pageCount} of spaces (${allSpacesData.length} total so far)`);
+				} catch (err) {
+					console.warn('Error during spaces pagination, stopping:', err);
+					break;
+				}
+			}
+			
+			console.log(`Finished loading ${allSpacesData.length} spaces across ${pageCount} pages`);
+			
+			spaces = allSpacesData
 				.map((space: any, index: number) => {
 					const id = space.resourceId || space.id || space.spaceId || `space-${index}`;
 					return {
@@ -1055,27 +1103,98 @@
 		}
 	}
 
+	/**
+	 * Fetch all apps from the API with pagination support
+	 * Follows link.next URLs to retrieve all apps (not just first 100)
+	 */
+	async function fetchAllAppItems(items: any): Promise<AppItem[]> {
+		const allApps: AppItem[] = [];
+		let nextUrl: string | null = null;
+		let pageCount = 0;
+		const maxPages = 100; // Safety limit to prevent infinite loops
+		
+		// First request
+		let response = await items.getItems({ resourceType: 'app[directQuery,]', limit: 100 });
+		if (response.status !== 200) {
+			throw new Error(`Failed to get items: ${response.status}`);
+		}
+		
+		allApps.push(...(response.data?.data || []));
+		nextUrl = response.data?.links?.next?.href || null;
+		pageCount++;
+		
+		// Follow pagination links
+		while (nextUrl && pageCount < maxPages) {
+			try {
+				// Extract the path from the full URL for the next request
+				const url = new URL(nextUrl, 'https://placeholder.com');
+				const searchParams = new URLSearchParams(url.search);
+				
+				response = await items.getItems({ 
+					resourceType: 'app[directQuery,]', 
+					limit: 100,
+					...Object.fromEntries(searchParams.entries())
+				});
+				
+				if (response.status !== 200) {
+					console.warn(`Pagination request failed with status ${response.status}, stopping pagination`);
+					break;
+				}
+				
+				const pageApps = response.data?.data || [];
+				if (pageApps.length === 0) {
+					break;
+				}
+				
+				allApps.push(...pageApps);
+				nextUrl = response.data?.links?.next?.href || null;
+				pageCount++;
+				
+				console.log(`Loaded page ${pageCount} of apps (${allApps.length} total so far)`);
+			} catch (err) {
+				console.warn('Error during pagination, stopping:', err);
+				break;
+			}
+		}
+		
+		console.log(`Finished loading ${allApps.length} apps across ${pageCount} pages`);
+		return allApps;
+	}
+	
 	async function loadAppList() {
 		if (isLoadingApps || appItems.length > 0) return;
 		
 		isLoadingApps = true;
 		dataLoadError = null;
+		cacheLoadedAppsCount = 0;
 		
 		try {
-			const { qlikApi } = await ensureAuthConfigured();
-			const { items } = qlikApi;
+			const { qlikApi, tenantUrl } = await ensureAuthConfigured();
+			const { items, users } = qlikApi;
+			
+			// Get current user ID for cache keying
+			let userId = currentUserId;
+			if (!userId) {
+				try {
+					const userResponse = await users.getMyUser();
+					if (userResponse.status === 200 && userResponse.data?.id) {
+						userId = userResponse.data.id;
+						currentUserId = userId;
+					}
+				} catch (e) {
+					console.warn('Failed to get user ID, using fallback:', e);
+					userId = 'default';
+					currentUserId = userId;
+				}
+			}
 			
 			// Load spaces in parallel with apps (don't await to avoid blocking)
 			loadSpaces().catch(err => {
 				// Spaces are optional, so we don't throw - just leave spaces array empty
 			});
 			
-			const itemsResponse = await items.getItems({ resourceType: 'app[directQuery,]', limit: 100 });
-			if (itemsResponse.status !== 200) {
-				throw new Error(`Failed to get items: ${itemsResponse.status}`);
-			}
-			
-			const allApps = itemsResponse.data?.data || [];
+			// Fetch ALL apps with pagination
+			const allApps = await fetchAllAppItems(items);
 			appItems = allApps;
 			apps = allApps.map((app: any) => ({
 				name: app.name || app.resourceId,
@@ -1083,7 +1202,54 @@
 				spaceId: app.spaceId || app.space?.resourceId || undefined
 			}));
 			
-			loadAppDataInBackground();
+			// Check cache and determine which apps need loading
+			if (tenantUrl && userId) {
+				const { toLoad, toRemove, unchanged } = await appCache.getAppsToUpdate(
+					tenantUrl,
+					userId,
+					allApps
+				);
+				
+				console.log(`Cache analysis: ${unchanged.length} unchanged, ${toLoad.length} to load, ${toRemove.length} to remove`);
+				
+				// Remove apps that no longer exist
+				if (toRemove.length > 0) {
+					console.log(`Removing ${toRemove.length} apps that no longer exist:`, toRemove);
+					await appCache.removeApps(tenantUrl, userId, toRemove);
+				}
+				
+				// Load unchanged apps from cache immediately
+				if (unchanged.length > 0) {
+					const cachedQlikApps = unchanged.map(cached => ({
+						id: cached.id,
+						name: cached.name,
+						data: cached.data
+					}));
+					qlikApps = cachedQlikApps;
+					cacheLoadedAppsCount = unchanged.length;
+					
+					// Process sheets from cached apps
+					for (const cached of unchanged) {
+						await processSheets(cached.data, cached.name, cached.id);
+					}
+					
+					// Build search index with cached data
+					buildSearchableIndex();
+					
+					console.log(`Loaded ${unchanged.length} apps from cache`);
+				}
+				
+				// Load remaining apps in background (only the ones that need loading)
+				if (toLoad.length > 0) {
+					loadAppDataInBackground(toLoad);
+				} else if (unchanged.length > 0) {
+					// All apps loaded from cache, update metadata
+					await appCache.setMetadata(tenantUrl, userId, unchanged.map(a => a.id));
+				}
+			} else {
+				// No cache available, load all apps
+				loadAppDataInBackground();
+			}
 			
 		} catch (err: any) {
 			console.error('Failed to load app list:', err);
@@ -1093,7 +1259,7 @@
 		}
 	}
 	
-	async function loadAppDataInBackground() {
+	async function loadAppDataInBackground(specificAppsToLoad?: AppItem[]) {
 		if (isLoadingAppData || appItems.length === 0) return;
 		
 		isLoadingAppData = true;
@@ -1104,19 +1270,34 @@
 			const { qix } = qlikApi;
 			
 			const loadedAppIds = new Set(qlikApps.map(a => a.id));
-			const appsToLoad = appItems.filter(app => !loadedAppIds.has(app.resourceId));
+			
+			// Use specific apps if provided, otherwise determine from appItems
+			let appsToLoad: AppItem[];
+			if (specificAppsToLoad) {
+				appsToLoad = specificAppsToLoad.filter(app => !loadedAppIds.has(app.resourceId));
+			} else {
+				appsToLoad = appItems.filter(app => !loadedAppIds.has(app.resourceId));
+			}
 			
 			if (appsToLoad.length === 0) {
 				isLoadingAppData = false;
 				loadingProgress = { current: appItems.length, total: appItems.length, currentApp: '' };
+				
+				// Update cache metadata even if nothing to load
+				if (tenantUrl && currentUserId) {
+					const allAppIds = qlikApps.map(a => a.id);
+					await appCache.setMetadata(tenantUrl, currentUserId, allAppIds);
+				}
 				return;
 			}
 			
 			const CONCURRENCY_LIMIT = 5;
 			
-			async function processApp(appItem: any): Promise<void> {
+			async function processApp(appItem: AppItem): Promise<void> {
 				const appId = appItem.resourceId;
 				const appName = appItem.name || appItem.resourceId;
+				const appUpdatedAt = appItem.updatedAt || new Date().toISOString();
+				const appSpaceId = appItem.spaceId;
 				
 				if (loadingAppIds.has(appId)) return;
 				
@@ -1138,6 +1319,19 @@
 					const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
 					
 					console.log(`App ${appName}:`, structureData);
+					
+					// Save to cache
+					if (tenantUrl && currentUserId) {
+						await appCache.setAppData(
+							tenantUrl,
+							currentUserId,
+							appId,
+							appName,
+							structureData,
+							appUpdatedAt,
+							appSpaceId
+						);
+					}
 					
 					const updatedApps = [...qlikApps, {
 						id: appId,
@@ -1180,7 +1374,13 @@
 			
 			for (let i = 0; i < appsToLoad.length; i += CONCURRENCY_LIMIT) {
 				const batch = appsToLoad.slice(i, i + CONCURRENCY_LIMIT);
-				await Promise.all(batch.map((appItem: any) => processApp(appItem)));
+				await Promise.all(batch.map((appItem: AppItem) => processApp(appItem)));
+			}
+			
+			// Update cache metadata after loading all apps
+			if (tenantUrl && currentUserId) {
+				const allAppIds = qlikApps.map(a => a.id);
+				await appCache.setMetadata(tenantUrl, currentUserId, allAppIds);
 			}
 			
 		} catch (err: any) {
@@ -1210,6 +1410,9 @@
 			const { qix } = qlikApi;
 			
 			const appName = appItem.name || appId;
+			const appUpdatedAt = appItem.updatedAt || new Date().toISOString();
+			const appSpaceId = appItem.spaceId;
+			
 			loadingAppIds = new Set([...loadingAppIds, appId]);
 			loadingProgress = { 
 				current: qlikApps.length, 
@@ -1223,6 +1426,19 @@
 			// Get the app document from the session
 			const app = await session.getDoc();
 			const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
+			
+			// Save to cache
+			if (tenantUrl && currentUserId) {
+				await appCache.setAppData(
+					tenantUrl,
+					currentUserId,
+					appId,
+					appName,
+					structureData,
+					appUpdatedAt,
+					appSpaceId
+				);
+			}
 			
 			qlikApps = [...qlikApps, { id: appId, name: appName, data: structureData }];
 			
@@ -1254,6 +1470,16 @@
 	}
 	
 	async function refreshData() {
+		// Clear the cache for this tenant/user to force a full reload
+		if (currentTenantUrl && currentUserId) {
+			try {
+				await appCache.clearCache(currentTenantUrl, currentUserId);
+				console.log('Cache cleared for refresh');
+			} catch (err) {
+				console.warn('Failed to clear cache:', err);
+			}
+		}
+		
 		qlikApps = [];
 		apps = [];
 		appItems = [];
@@ -1264,6 +1490,7 @@
 		loadingProgress = { current: 0, total: 0, currentApp: '' };
 		hasNewDataPending = false;
 		lastRefreshedAppsCount = 0;
+		cacheLoadedAppsCount = 0;
 		// Note: We don't reset isAuthConfigured as the same auth session can be reused
 		
 		selectedSpaces = new Set();
@@ -1820,11 +2047,13 @@
 						total={loadingProgress.total}
 						currentApp={loadingProgress.currentApp}
 						hasNewData={hasNewDataPending}
+						cachedCount={cacheLoadedAppsCount}
 						onRefreshTable={refreshTable}
 					/>
 				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
 					<CompletionIndicator
 						totalApps={appItems.length}
+						cachedCount={cacheLoadedAppsCount}
 						onRefresh={refreshData}
 					/>
 				{/if}

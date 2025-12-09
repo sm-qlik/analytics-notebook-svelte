@@ -4,10 +4,11 @@
 		total: number;
 		currentApp: string;
 		hasNewData?: boolean;
+		cachedCount?: number;
 		onRefreshTable?: () => void;
 	}
 
-	let { current, total, currentApp, hasNewData = false, onRefreshTable }: Props = $props();
+	let { current, total, currentApp, hasNewData = false, cachedCount = 0, onRefreshTable }: Props = $props();
 </script>
 
 <div class="flex-shrink-0 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -22,6 +23,9 @@
 			<div class="flex-1 min-w-0">
 				<p class="text-sm font-medium text-blue-900 dark:text-blue-100">
 					Loading app data: {current} of {total} apps
+					{#if cachedCount > 0}
+						<span class="text-blue-600 dark:text-blue-400 font-normal">({cachedCount} from cache)</span>
+					{/if}
 				</p>
 				<p class="text-xs text-blue-700 dark:text-blue-300 truncate h-4">
 					{#if currentApp}Currently loading: {currentApp}{:else}&nbsp;{/if}

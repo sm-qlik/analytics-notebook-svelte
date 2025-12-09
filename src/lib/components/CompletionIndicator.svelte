@@ -1,10 +1,11 @@
 <script lang="ts">
 	interface Props {
 		totalApps: number;
+		cachedCount?: number;
 		onRefresh: () => void;
 	}
 
-	let { totalApps, onRefresh }: Props = $props();
+	let { totalApps, cachedCount = 0, onRefresh }: Props = $props();
 	let showConfirmDialog = $state(false);
 	
 	function handleRefreshClick() {
@@ -19,6 +20,8 @@
 	function cancelRefresh() {
 		showConfirmDialog = false;
 	}
+	
+	const freshlyLoaded = $derived(totalApps - cachedCount);
 </script>
 
 <div class="flex-shrink-0 mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
@@ -32,6 +35,11 @@
 			<div class="flex-1">
 				<p class="text-sm font-medium text-green-900 dark:text-green-100">
 					All {totalApps} apps loaded successfully
+					{#if cachedCount > 0}
+						<span class="text-green-600 dark:text-green-400 font-normal">
+							({cachedCount} from cache{#if freshlyLoaded > 0}, {freshlyLoaded} refreshed{/if})
+						</span>
+					{/if}
 				</p>
 			</div>
 		</div>
