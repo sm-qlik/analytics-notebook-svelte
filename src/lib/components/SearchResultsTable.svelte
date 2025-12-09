@@ -548,11 +548,13 @@
 							const qDefStr = extractString(obj.qDef);
 							if (qDefStr) return qDefStr;
 						}
-						
-						// Fallback: try other properties that might contain the definition
-						const qGrouping = extractString(obj.qGrouping);
-						if (qGrouping) return qGrouping;
-						
+
+						if(obj.qFieldDefs !== undefined && obj.qFieldDefs !== null) {
+							if(obj.qFieldDefs.length > 0) {
+								return obj.qFieldsDefs.join(' ');
+							}
+						}
+												
 						const qLabelExpression = extractString(obj.qLabelExpression);
 						if (qLabelExpression) return qLabelExpression;
 						
