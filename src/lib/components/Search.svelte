@@ -740,17 +740,24 @@
 							} else if (parentObj?.qMeasure?.qDef) {
 								qDefStr = safeExtractQDefString(parentObj.qMeasure.qDef);
 							}
-							// For qDim objects, check qGrouping as fallback
-							if (!qDefStr && obj.qGrouping) {
-								qDefStr = safeExtractQDefString(obj.qGrouping);
-							}
+
 							// For qMeasure objects, check qLabelExpression as fallback
+							
+							if(!qDefStr && obj.qFieldDefs) {
+								if(obj.qFieldDefs.length > 0) {
+									qDefStr =  obj.qFieldDefs.join(' ');
+								}
+							}
+
+
 							if (!qDefStr && obj.qLabelExpression) {
 								qDefStr = safeExtractQDefString(obj.qLabelExpression);
 							}
+						
 							if (qDefStr) {
 								objectToStore = { ...obj, qDef: qDefStr };
-							}
+							} 
+							
 						} else {
 							// obj.qDef exists - ensure it's a string
 							const qDefStr = safeExtractQDefString(obj.qDef);
@@ -1376,7 +1383,7 @@
 							appSpaceId
 						);
 					}
-					
+
 					const updatedApps = [...qlikApps, {
 						id: appId,
 						name: appName,
