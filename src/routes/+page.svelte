@@ -7,6 +7,8 @@
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
   import { base } from '$app/paths';
   
+  const version = import.meta.env.APP_VERSION || '0.1.0';
+  
   let isAuthenticated = $state(false);
   let isCheckingAuth = $state(true);
   let authState = $state<any>(null);
@@ -279,7 +281,7 @@
 	<div class="px-[10px] py-4 max-w-full">
 		<div class="flex justify-between items-center">
 			<div class="text-sm text-gray-500 dark:text-gray-400">
-				<p>Analytics Notebook</p>
+				<p>Analytics Notebook v{version}</p>
 			</div>
 			<div class="flex items-center space-x-4">
 			</div>
