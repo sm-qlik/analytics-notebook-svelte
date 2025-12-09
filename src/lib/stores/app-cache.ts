@@ -26,7 +26,7 @@ export interface CachedAppData {
 }
 
 export interface CacheMetadata {
-	key: string; // composite key: tenantUrl:userId
+	key: string; // composite key: tenantUrl::userId (uses :: delimiter)
 	lastSyncAt: number; // When we last synced with the API
 	appIds: string[]; // List of app IDs we have cached
 }
@@ -82,18 +82,20 @@ export interface SearchFilters {
 
 /**
  * Get composite cache key from tenant URL and user ID
+ * Uses '::' as delimiter to avoid conflicts with URLs containing colons (e.g., users entering tenant url with port like tenant:443)
  */
 export function getCacheKey(tenantUrl: string, userId: string): string {
 	// Normalize tenant URL (remove protocol, trailing slashes)
 	const normalizedTenant = tenantUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
-	return `${normalizedTenant}:${userId}`;
+	return `${normalizedTenant}::${userId}`;
 }
 
 /**
  * Get the app cache key (scoped to tenant + user)
+ * Uses '::' as delimiter to match getCacheKey format
  */
 function getAppCacheKey(cacheKey: string, appId: string): string {
-	return `${cacheKey}:${appId}`;
+	return `${cacheKey}::${appId}`;
 }
 
 class AppCacheDB {
@@ -1102,10 +1104,11 @@ class AppCacheDB {
 				// Process each discovered tenant/user
 				for (const cacheKey of tenantUserKeys) {
 					// Parse tenant URL and user ID from cache key
-					// Use lastIndexOf to handle tenant URLs with ports (e.g., tenant.com:8080)
-					const lastColon = cacheKey.lastIndexOf(':');
-					const tenantUrl = lastColon !== -1 ? cacheKey.slice(0, lastColon) : '';
-					const userId = lastColon !== -1 ? cacheKey.slice(lastColon + 1) : '';
+					// Use lastIndexOf with '::' delimiter to handle tenant URLs with ports (e.g., tenant.com:8080)
+					const delimiter = '::';
+					const lastDelimiter = cacheKey.lastIndexOf(delimiter);
+					const tenantUrl = lastDelimiter !== -1 ? cacheKey.slice(0, lastDelimiter) : '';
+					const userId = lastDelimiter !== -1 ? cacheKey.slice(lastDelimiter + delimiter.length) : '';
 
 					// Count apps for this tenant/user
 					const appsIndex = appsStore.index('tenantUser');

@@ -323,8 +323,53 @@
 		title: string;
 	};
 
-	// Available object types - static list since we know all possible types
-	const availableTypes = ['Master Dimension', 'Master Measure', 'Sheet Dimension', 'Sheet Measure'];
+	// Available object types - dynamically derived from search index for extensibility
+	let availableTypes = $state<string[]>([]);
+	let availableTypesCacheKey = $state<string | null>(null); // Track which cache key the types are for
+	
+	/**
+	 * Load available object types from the search index cache
+	 * This is performant because:
+	 * 1. It uses IndexedDB index cursors (fast)
+	 * 2. Results are cached per tenant/user
+	 * 3. Only re-fetches when cache key changes or search index is updated
+	 */
+	async function loadAvailableTypes() {
+		if (!currentTenantUrl || !currentUserId) {
+			availableTypes = [];
+			availableTypesCacheKey = null;
+			return;
+		}
+		
+		const cacheKey = getCacheKey(currentTenantUrl, currentUserId);
+		
+		// Skip if we already have types for this cache key
+		if (availableTypesCacheKey === cacheKey && availableTypes.length > 0) {
+			return;
+		}
+		
+		try {
+			const types = await appCache.getUniqueValues(currentTenantUrl, currentUserId, 'objectType');
+			// Filter out null/empty values and sort for consistency
+			availableTypes = types.filter(t => t && t.trim()).sort();
+			availableTypesCacheKey = cacheKey;
+		} catch (err) {
+			console.warn('Failed to load available types from cache:', err);
+			// Fallback to empty array - types will appear as data is indexed
+			availableTypes = [];
+			availableTypesCacheKey = null;
+		}
+	}
+	
+	// Load available types when tenant/user changes or when search index is updated
+	$effect(() => {
+		if (currentTenantUrl && currentUserId) {
+			loadAvailableTypes();
+		} else {
+			availableTypes = [];
+			availableTypesCacheKey = null;
+		}
+	});
 
 	function extractSearchableFields(obj: any): string {
 		if (obj === null || obj === undefined) return '';
@@ -782,6 +827,8 @@
 		// Store in IndexedDB
 		if (searchItems.length > 0) {
 			await appCache.addSearchIndexItems(searchItems);
+			// Refresh available types after indexing new items (may include new object types)
+			await loadAvailableTypes();
 		}
 
 		return searchItems.length;
@@ -992,7 +1039,7 @@
 		const maxPages = 100; // Safety limit to prevent infinite loops
 		
 		// First request
-		let response = await items.getItems({ resourceType: 'app[directQuery,]', limit: 100 });
+		let response = await items.getItems({ resourceType: 'app', limit: 100 });
 		if (response.status !== 200) {
 			throw new Error(`Failed to get items: ${response.status}`);
 		}
@@ -1009,7 +1056,7 @@
 				const searchParams = new URLSearchParams(url.search);
 				
 				response = await items.getItems({ 
-					resourceType: 'app[directQuery,]', 
+					resourceType: 'app', 
 					limit: 100,
 					...Object.fromEntries(searchParams.entries())
 				});
