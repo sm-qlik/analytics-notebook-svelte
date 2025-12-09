@@ -16,13 +16,13 @@
   
   function handleDataDeleted(cacheKey: string, isCurrentTenant: boolean) {
     if (isCurrentTenant) {
-      // Trigger refresh of the current tenant's data
+      // Trigger refresh - will detect cache is empty and reload everything
       refreshTrigger++;
     }
   }
   
   function handleCheckForUpdates() {
-    // Trigger a check for updates (incremental refresh, not full)
+    // Trigger a check for updates (only loads new/changed apps)
     refreshTrigger++;
   }
   

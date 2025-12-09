@@ -20,13 +20,13 @@
 	// Track previous trigger value to detect changes
 	let lastRefreshTrigger = $state(0);
 
-	// Effect to handle external refresh triggers (e.g., when cache is deleted)
+	// Effect to handle external refresh triggers (checks for updates)
 	$effect(() => {
 		if (refreshTrigger > lastRefreshTrigger) {
 			lastRefreshTrigger = refreshTrigger;
 			// Use untrack to avoid infinite loops
 			untrack(() => {
-				refreshData();
+				checkForUpdates();
 			});
 		}
 	});
@@ -1196,6 +1196,13 @@
 					await performIndexedDBSearch();
 					
 					console.log(`Loaded ${unchangedMetadata.length} apps from cache`);
+				} else {
+					// Nothing in cache (e.g., cache was cleared) - reset in-memory state
+					console.log('No cached data found, clearing in-memory state');
+					qlikApps = [];
+					sheets = [];
+					sheetMetadata = new Map();
+					cacheLoadedAppsCount = 0;
 				}
 				
 				// Load remaining apps in background (only the ones that need loading)
@@ -1523,41 +1530,25 @@
 		}
 	}
 	
-	async function refreshData() {
-		// Clear the cache for this tenant/user to force a full reload
-		if (currentTenantUrl && currentUserId) {
-			try {
-				await appCache.clearCache(currentTenantUrl, currentUserId);
-				console.log('Cache cleared for refresh');
-			} catch (err) {
-				console.warn('Failed to clear cache:', err);
-			}
-		}
+	/**
+	 * Check for updates without clearing the cache - only loads new/changed apps
+	 */
+	async function checkForUpdates() {
+		if (isLoadingApps || isLoadingAppData) return;
 		
-		qlikApps = [];
-		apps = [];
-		appItems = [];
-		sheets = [];
+		// Reset loading state but keep existing data
 		loadingAppIds = new Set();
-		loadingProgress = { current: 0, total: 0, currentApp: '' };
 		hasNewDataPending = false;
-		lastRefreshedAppsCount = 0;
-		cacheLoadedAppsCount = 0;
 		failedAppsCount = 0;
 		pendingAppsToLoad = [];
 		isLoadingPaused = false;
 		isLoadingDismissed = false;
-		// Note: We don't reset isAuthConfigured as the same auth session can be reused
 		
-		selectedSpaces = new Set();
-		selectedApps = new Set();
-		selectedSheets = new Set();
-		selectedTypes = new Set();
-		selectedSheetStates = new Set();
-		sheetMetadata = new Map();
-		// Reset the metadata update queue to prevent stale updates from overwriting fresh state
-		metadataUpdateQueue = Promise.resolve();
+		// Reset appItems to allow loadAppList to run
+		// But keep qlikApps, sheets, etc. as they contain the cached data display
+		appItems = [];
 		
+		// Re-run the app list load which will check for updates
 		await loadAppList();
 	}
 	
@@ -1974,7 +1965,7 @@
 						expectedTotal={appItems.length}
 						cachedCount={cacheLoadedAppsCount}
 						failedCount={failedAppsCount}
-						onRefresh={refreshData}
+						onCheckForUpdates={checkForUpdates}
 						onDismiss={() => isLoadingDismissed = true}
 					/>
 				{/if}
