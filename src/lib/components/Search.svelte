@@ -8,44 +8,13 @@
 	import FilterSidebar from './FilterSidebar.svelte';
 	import SearchInput from './SearchInput.svelte';
 	import SearchResultsTable from './SearchResultsTable.svelte';
+	import type { SearchResultItem } from '$lib/utils/search-result-item';
 	import LoadingIndicator from './LoadingIndicator.svelte';
 	import CompletionIndicator from './CompletionIndicator.svelte';
 
-	let searchQuery = $state('');
-	let searchResults = $state([] as Array<{
-		path: string;
-		object: any;
-		objectType: string | null;
-		context: any;
-		file?: string;
-		app?: string;
-		appId: string; // Required - all data comes from apps
-		sheet?: string | null;
-		sheetName?: string | null;
-		sheetId?: string | null;
-		sheetUrl?: string | null;
-		chartId?: string | null;
-		chartTitle?: string | null;
-		chartUrl?: string | null;
-		labels?: string[];
-	}>);
-	let unfilteredResults = $state([] as Array<{
-		path: string;
-		object: any;
-		objectType: string | null;
-		context: any;
-		file?: string;
-		app?: string;
-		appId: string; // Required - all data comes from apps
-		sheet?: string | null;
-		sheetName?: string | null;
-		sheetId?: string | null;
-		sheetUrl?: string | null;
-		chartId?: string | null;
-		chartTitle?: string | null;
-		chartUrl?: string | null;
-		labels?: string[];
-	}>);
+	let searchQuery = $state('');	
+	let searchResults = $state([] as Array<SearchResultItem>);
+	let unfilteredResults = $state([] as Array<SearchResultItem>);
 	let isSearching = $state(false);
 	let isLoadingApps = $state(false);
 	let isLoadingAppData = $state(false);
