@@ -72,6 +72,8 @@
 	let isSidebarCollapsed = $state(false);
 	let currentPage = $state(1);
 	let cacheLoadedAppsCount = $state(0); // Track how many apps were loaded from cache
+	let pendingAppsToLoad = $state<AppItem[]>([]); // Apps waiting to be loaded (paused due to space filter)
+	let isLoadingPaused = $state(false); // Track if loading is paused due to space filter
 	const itemsPerPage = 20;
 	
 	function createNewSet(oldSet: Set<string>): Set<string> {
@@ -1259,10 +1261,28 @@
 		}
 	}
 	
+	/**
+	 * Check if an app matches the current space filter
+	 */
+	function appMatchesSpaceFilter(appSpaceId: string | undefined, currentSelectedSpaces: Set<string>): boolean {
+		// If no spaces selected, all apps match
+		if (currentSelectedSpaces.size === 0) return true;
+		
+		// Check if "Personal" is selected and app has no space
+		const personalSelected = currentSelectedSpaces.has(PERSONAL_SPACE_ID);
+		const appHasNoSpace = !appSpaceId;
+		
+		if (personalSelected && appHasNoSpace) return true;
+		if (appSpaceId && currentSelectedSpaces.has(appSpaceId)) return true;
+		
+		return false;
+	}
+	
 	async function loadAppDataInBackground(specificAppsToLoad?: AppItem[]) {
 		if (isLoadingAppData || appItems.length === 0) return;
 		
 		isLoadingAppData = true;
+		isLoadingPaused = false;
 		loadingProgress = { current: qlikApps.length, total: appItems.length, currentApp: '' };
 		
 		try {
@@ -1272,12 +1292,24 @@
 			const loadedAppIds = new Set(qlikApps.map(a => a.id));
 			
 			// Use specific apps if provided, otherwise determine from appItems
+			// Also include any pending apps that were waiting
 			let appsToLoad: AppItem[];
 			if (specificAppsToLoad) {
-				appsToLoad = specificAppsToLoad.filter(app => !loadedAppIds.has(app.resourceId));
+				appsToLoad = [...specificAppsToLoad, ...pendingAppsToLoad].filter(app => !loadedAppIds.has(app.resourceId));
 			} else {
-				appsToLoad = appItems.filter(app => !loadedAppIds.has(app.resourceId));
+				appsToLoad = [...appItems, ...pendingAppsToLoad].filter(app => !loadedAppIds.has(app.resourceId));
 			}
+			
+			// Deduplicate apps by resourceId
+			const seenIds = new Set<string>();
+			appsToLoad = appsToLoad.filter(app => {
+				if (seenIds.has(app.resourceId)) return false;
+				seenIds.add(app.resourceId);
+				return true;
+			});
+			
+			// Clear pending apps since we're processing them now
+			pendingAppsToLoad = [];
 			
 			if (appsToLoad.length === 0) {
 				isLoadingAppData = false;
@@ -1293,13 +1325,25 @@
 			
 			const CONCURRENCY_LIMIT = 5;
 			
-			async function processApp(appItem: AppItem): Promise<void> {
+			async function processApp(appItem: AppItem): Promise<'loaded' | 'skipped' | 'error'> {
 				const appId = appItem.resourceId;
 				const appName = appItem.name || appItem.resourceId;
 				const appUpdatedAt = appItem.updatedAt || new Date().toISOString();
 				const appSpaceId = appItem.spaceId;
 				
-				if (loadingAppIds.has(appId)) return;
+				// Check if app matches current space filter
+				// Read selectedSpaces at processing time to get current state
+				const currentSelectedSpaces = selectedSpaces;
+				if (!appMatchesSpaceFilter(appSpaceId, currentSelectedSpaces)) {
+					// App doesn't match filter - add to pending and skip
+					pendingAppsToLoad = [...pendingAppsToLoad, appItem];
+					return 'skipped';
+				}
+				
+				if (loadingAppIds.has(appId)) return 'skipped';
+				
+				// Check again if already loaded (might have been loaded while waiting)
+				if (qlikApps.find(a => a.id === appId)) return 'skipped';
 				
 				loadingAppIds = new Set([...loadingAppIds, appId]);
 				loadingProgress = { 
@@ -1350,8 +1394,10 @@
 							performSearch(true);
 						});
 					}
+					return 'loaded';
 				} catch (err: any) {
 					console.warn(`Failed to load app ${appName}:`, err);
+					return 'error';
 				} finally {
 					// Close the session immediately after loading data to free up websocket connections
 					if (session) {
@@ -1375,9 +1421,30 @@
 			for (let i = 0; i < appsToLoad.length; i += CONCURRENCY_LIMIT) {
 				const batch = appsToLoad.slice(i, i + CONCURRENCY_LIMIT);
 				await Promise.all(batch.map((appItem: AppItem) => processApp(appItem)));
+				
+				// Check if all remaining apps are being skipped due to space filter
+				// If so, pause loading and wait for filter to change
+				if (pendingAppsToLoad.length > 0 && selectedSpaces.size > 0) {
+					const remainingApps = appsToLoad.slice(i + CONCURRENCY_LIMIT);
+					const loadedIds = new Set(qlikApps.map(a => a.id));
+					const unloadedRemaining = remainingApps.filter(app => !loadedIds.has(app.resourceId));
+					
+					// Check if any remaining apps match the filter
+					const matchingRemaining = unloadedRemaining.filter(app => 
+						appMatchesSpaceFilter(app.spaceId, selectedSpaces)
+					);
+					
+					if (matchingRemaining.length === 0 && unloadedRemaining.length > 0) {
+						// All remaining apps are filtered out - add them to pending and pause
+						pendingAppsToLoad = [...pendingAppsToLoad, ...unloadedRemaining];
+						isLoadingPaused = true;
+						console.log(`Loading paused: ${pendingAppsToLoad.length} apps waiting for space filter to change`);
+						break;
+					}
+				}
 			}
 			
-			// Update cache metadata after loading all apps
+			// Update cache metadata after loading
 			if (tenantUrl && currentUserId) {
 				const allAppIds = qlikApps.map(a => a.id);
 				await appCache.setMetadata(tenantUrl, currentUserId, allAppIds);
@@ -1838,6 +1905,28 @@
 			newSet.add(spaceId);
 		}
 		selectedSpaces = newSet;
+		
+		// Check if we should resume loading paused apps
+		resumeLoadingIfNeeded(newSet);
+	}
+	
+	/**
+	 * Resume loading paused apps if the new space filter allows them
+	 */
+	function resumeLoadingIfNeeded(newSelectedSpaces: Set<string>) {
+		if (pendingAppsToLoad.length === 0 || isLoadingAppData) return;
+		
+		// Check if any pending apps now match the filter
+		const matchingPending = pendingAppsToLoad.filter(app => 
+			appMatchesSpaceFilter(app.spaceId, newSelectedSpaces)
+		);
+		
+		if (matchingPending.length > 0) {
+			console.log(`Resuming loading: ${matchingPending.length} pending apps now match the filter`);
+			isLoadingPaused = false;
+			// Resume background loading with the pending apps
+			loadAppDataInBackground(matchingPending);
+		}
 	}
 
 	function toggleApp(appId: string) {
@@ -1872,11 +1961,15 @@
 
 	function selectAllSpaces() {
 		// Include Personal space and all regular spaces
-		selectedSpaces = new Set([PERSONAL_SPACE_ID, ...spaces.map((s) => s.id)]);
+		const newSet = new Set([PERSONAL_SPACE_ID, ...spaces.map((s) => s.id)]);
+		selectedSpaces = newSet;
+		resumeLoadingIfNeeded(newSet);
 	}
 
 	function deselectAllSpaces() {
-		selectedSpaces = new Set();
+		const newSet = new Set<string>();
+		selectedSpaces = newSet;
+		resumeLoadingIfNeeded(newSet);
 	}
 
 	function selectAllApps() {
@@ -2048,7 +2141,19 @@
 						currentApp={loadingProgress.currentApp}
 						hasNewData={hasNewDataPending}
 						cachedCount={cacheLoadedAppsCount}
+						isPaused={isLoadingPaused}
+						pendingCount={pendingAppsToLoad.length}
 						onRefreshTable={refreshTable}
+					/>
+				{:else if isLoadingPaused && pendingAppsToLoad.length > 0 && appItems.length > 0}
+					<LoadingIndicator
+						current={qlikApps.length}
+						total={appItems.length}
+						currentApp=""
+						hasNewData={false}
+						cachedCount={cacheLoadedAppsCount}
+						isPaused={true}
+						pendingCount={pendingAppsToLoad.length}
 					/>
 				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
 					<CompletionIndicator
