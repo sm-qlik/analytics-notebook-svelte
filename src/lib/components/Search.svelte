@@ -3,14 +3,33 @@
 	import { authStore } from '$lib/stores/auth';
 	import { loadQlikAPI, configureQlikAuthOnce, resetAuthConfiguration } from '$lib/utils/qlik-auth';
 	import { EngineInterface } from '$lib/utils/engine-interface';
-	import { appCache, type AppItem, type CachedAppData } from '$lib/stores/app-cache';
-	import Fuse from 'fuse.js';
+	import { appCache, getCacheKey, type AppItem, type CachedAppData, type SearchIndexItem, type SearchFilters } from '$lib/stores/app-cache';
 	import * as XLSX from 'xlsx';
 	import FilterSidebar from './FilterSidebar.svelte';
 	import SearchInput from './SearchInput.svelte';
 	import SearchResultsTable from './SearchResultsTable.svelte';
 	import LoadingIndicator from './LoadingIndicator.svelte';
 	import CompletionIndicator from './CompletionIndicator.svelte';
+
+	interface Props {
+		refreshTrigger?: number;
+	}
+
+	let { refreshTrigger = 0 }: Props = $props();
+
+	// Track previous trigger value to detect changes
+	let lastRefreshTrigger = $state(0);
+
+	// Effect to handle external refresh triggers (e.g., when cache is deleted)
+	$effect(() => {
+		if (refreshTrigger > lastRefreshTrigger) {
+			lastRefreshTrigger = refreshTrigger;
+			// Use untrack to avoid infinite loops
+			untrack(() => {
+				refreshData();
+			});
+		}
+	});
 
 	let searchQuery = $state('');
 	let searchResults = $state([] as Array<{
@@ -53,13 +72,16 @@
 	let dataLoadError = $state<string | null>(null);
 	let loadingProgress = $state({ current: 0, total: 0, currentApp: '' });
 	
-	let qlikApps = $state<Array<{ id: string; name: string; data: any }>>([]);
+	// App metadata - we no longer store full structure data in qlikApps to save memory
+	// Full structure data is stored in IndexedDB and queried on demand
+	let qlikApps = $state<Array<{ id: string; name: string; spaceId?: string; data?: any }>>([]);
 	let apps = $state<Array<{ name: string; id: string; spaceId?: string }>>([]);
 	let appItems = $state<AppItem[]>([]);
 	let spaces = $state<Array<{ name: string; id: string }>>([]);
 	let sheets = $state<Array<{ name: string; app: string; appId: string; sheetId: string; approved?: boolean; published?: boolean }>>([]);
 	let sheetMetadata = $state<Map<string, { approved: boolean; published: boolean }>>(new Map());
 	let loadingAppIds = $state<Set<string>>(new Set());
+	let totalSearchResults = $state(0); // Total count from IndexedDB query
 	
 	// Mutex for serializing sheet metadata updates to prevent race conditions
 	let metadataUpdateQueue: Promise<void> = Promise.resolve();
@@ -72,6 +94,7 @@
 	let isSidebarCollapsed = $state(false);
 	let currentPage = $state(1);
 	let cacheLoadedAppsCount = $state(0); // Track how many apps were loaded from cache
+	let failedAppsCount = $state(0); // Track how many apps failed to load
 	let pendingAppsToLoad = $state<AppItem[]>([]); // Apps waiting to be loaded (paused due to space filter)
 	let isLoadingPaused = $state(false); // Track if loading is paused due to space filter
 	const itemsPerPage = 20;
@@ -299,12 +322,8 @@
 		title: string;
 	};
 
-	let searchableIndex: SearchableItem[] = $state([]);
-	let fuseInstance: Fuse<SearchableItem> | null = $state(null);
-	
-	const availableTypes = $derived(
-		Array.from(new Set(searchableIndex.map((r) => r.objectType).filter((t): t is string => Boolean(t)))).sort()
-	);
+	// Available object types - static list since we know all possible types
+	const availableTypes = ['Master Dimension', 'Master Measure', 'Sheet Dimension', 'Sheet Measure'];
 
 	function extractSearchableFields(obj: any): string {
 		if (obj === null || obj === undefined) return '';
@@ -552,461 +571,282 @@
 		return [...new Set(filteredLabels)];
 	}
 
-	function buildSearchableIndex() {
-		if (qlikApps.length === 0) {
-			searchableIndex = [];
-			fuseInstance = null;
+
+	/**
+	 * Extract and store searchable items for a single app in IndexedDB
+	 * This is more memory-efficient than building a huge in-memory index
+	 */
+	async function storeAppSearchIndex(
+		appId: string,
+		appName: string,
+		spaceId: string | undefined,
+		structureData: any,
+		tenantUrl: string,
+		userId: string
+	): Promise<number> {
+		const cacheKey = getCacheKey(tenantUrl, userId);
+		const searchItems: SearchIndexItem[] = [];
+		const processedPaths = new Set<string>();
+
+		// Helper to extract qDef string
+		function safeExtractQDef(value: any): string {
+			if (value === null || value === undefined) return '';
+			if (typeof value === 'string') return value.trim();
+			if (typeof value === 'object') {
+				if (value.qv && typeof value.qv === 'string') return value.qv.trim();
+				if (value.qDef && typeof value.qDef === 'string') return value.qDef.trim();
+				if (Array.isArray(value.qFieldDefs) && value.qFieldDefs.length > 0) {
+					return value.qFieldDefs.join(' ');
+				}
+			}
+			return '';
+		}
+
+		// Process master dimensions
+		const masterDimensions = structureData.masterDimensions || [];
+		masterDimensions.forEach((dim: any, idx: number) => {
+			if (!dim.qDim) return;
+			const path = `masterDimensions[${idx}].qDim`;
+			const id = `${cacheKey}:${appId}:${path}`;
+			if (processedPaths.has(id)) return;
+			processedPaths.add(id);
+
+			const labels = dim.qDim.qFieldLabels || [];
+			const title = dim.qMetaDef?.title || dim.qDim.qLabel || '';
+			const definition = safeExtractQDef(dim.qDim.qFieldDefs) || safeExtractQDef(dim.qDim);
+
+			searchItems.push({
+				id,
+				tenantUser: cacheKey,
+				appId,
+				appName,
+				spaceId: spaceId || '',
+				sheetId: '',
+				sheetName: '',
+				sheetUrl: '',
+				objectType: 'Master Dimension',
+				title: typeof title === 'string' ? title : '',
+				labels: Array.isArray(labels) ? labels.filter((l: any) => typeof l === 'string') : [],
+				labelsText: Array.isArray(labels) ? labels.filter((l: any) => typeof l === 'string').join(' ') : '',
+				searchText: `${title} ${definition} ${Array.isArray(labels) ? labels.join(' ') : ''}`.trim(),
+				definition,
+				chartId: '',
+				chartTitle: '',
+				chartUrl: '',
+				path
+			});
+		});
+
+		// Process master measures
+		const masterMeasures = structureData.masterMeasures || [];
+		masterMeasures.forEach((measure: any, idx: number) => {
+			if (!measure.qMeasure) return;
+			const path = `masterMeasures[${idx}].qMeasure`;
+			const id = `${cacheKey}:${appId}:${path}`;
+			if (processedPaths.has(id)) return;
+			processedPaths.add(id);
+
+			const title = measure.qMetaDef?.title || measure.qMeasure.qLabel || '';
+			const definition = safeExtractQDef(measure.qMeasure.qDef) || safeExtractQDef(measure.qMeasure);
+
+			searchItems.push({
+				id,
+				tenantUser: cacheKey,
+				appId,
+				appName,
+				spaceId: spaceId || '',
+				sheetId: '',
+				sheetName: '',
+				sheetUrl: '',
+				objectType: 'Master Measure',
+				title: typeof title === 'string' ? title : '',
+				labels: [],
+				labelsText: '',
+				searchText: `${title} ${definition}`.trim(),
+				definition,
+				chartId: '',
+				chartTitle: '',
+				chartUrl: '',
+				path
+			});
+		});
+
+		// Process sheet dimensions
+		const sheetDimensions = structureData.sheetDimensions || [];
+		sheetDimensions.forEach((dim: any, idx: number) => {
+			const path = `sheetDimensions[${idx}].qDef`;
+			const id = `${cacheKey}:${appId}:${path}`;
+			if (processedPaths.has(id)) return;
+			processedPaths.add(id);
+
+			const sheetId = dim.sheetId || '';
+			const sheetName = dim.sheetTitle || '';
+			const sheetUrl = dim.sheetUrl || '';
+			const chartId = dim.chartId || '';
+			const chartTitle = dim.chartTitle || '';
+			const chartUrl = dim.chartUrl || '';
+			const definition = safeExtractQDef(dim.qDef) || safeExtractQDef(dim);
+			const labels = dim.qFieldLabels || [];
+			const title = dim.title || '';
+
+			searchItems.push({
+				id,
+				tenantUser: cacheKey,
+				appId,
+				appName,
+				spaceId: spaceId || '',
+				sheetId,
+				sheetName,
+				sheetUrl,
+				objectType: 'Sheet Dimension',
+				title: typeof title === 'string' ? title : '',
+				labels: Array.isArray(labels) ? labels.filter((l: any) => typeof l === 'string') : [],
+				labelsText: Array.isArray(labels) ? labels.filter((l: any) => typeof l === 'string').join(' ') : '',
+				searchText: `${title} ${definition} ${sheetName} ${chartTitle} ${Array.isArray(labels) ? labels.join(' ') : ''}`.trim(),
+				definition,
+				chartId,
+				chartTitle,
+				chartUrl,
+				path
+			});
+		});
+
+		// Process sheet measures
+		const sheetMeasures = structureData.sheetMeasures || [];
+		sheetMeasures.forEach((measure: any, idx: number) => {
+			const path = `sheetMeasures[${idx}].qDef`;
+			const id = `${cacheKey}:${appId}:${path}`;
+			if (processedPaths.has(id)) return;
+			processedPaths.add(id);
+
+			const sheetId = measure.sheetId || '';
+			const sheetName = measure.sheetTitle || '';
+			const sheetUrl = measure.sheetUrl || '';
+			const chartId = measure.chartId || '';
+			const chartTitle = measure.chartTitle || '';
+			const chartUrl = measure.chartUrl || '';
+			const definition = safeExtractQDef(measure.qDef) || safeExtractQDef(measure);
+			const title = measure.title || '';
+
+			searchItems.push({
+				id,
+				tenantUser: cacheKey,
+				appId,
+				appName,
+				spaceId: spaceId || '',
+				sheetId,
+				sheetName,
+				sheetUrl,
+				objectType: 'Sheet Measure',
+				title: typeof title === 'string' ? title : '',
+				labels: [],
+				labelsText: '',
+				searchText: `${title} ${definition} ${sheetName} ${chartTitle}`.trim(),
+				definition,
+				chartId,
+				chartTitle,
+				chartUrl,
+				path
+			});
+		});
+
+		// Store in IndexedDB
+		if (searchItems.length > 0) {
+			await appCache.addSearchIndexItems(searchItems);
+		}
+
+		return searchItems.length;
+	}
+
+	/**
+	 * Perform search using IndexedDB - much more memory efficient for large datasets
+	 */
+	async function performIndexedDBSearch(): Promise<void> {
+		if (!currentTenantUrl || !currentUserId) {
+			searchResults = [];
+			totalSearchResults = 0;
 			return;
 		}
-		
-		const index: SearchableItem[] = [];
-		const processedObjects = new Map<string, boolean>();
 
-		function extractObjects(obj: any, path = '', context: any = {}, appId: string, appName: string, parentObj: any = null) {
-			if (obj === null || obj === undefined) return;
+		isSearching = true;
+		const cacheKey = getCacheKey(currentTenantUrl, currentUserId);
 
+		try {
+			// Build filter arrays from selected sets
+			const spaceIdsFilter = selectedSpaces.size > 0 
+				? Array.from(selectedSpaces).map(id => id === PERSONAL_SPACE_ID ? '' : id)
+				: undefined;
+			
+			const appIdsFilter = selectedApps.size > 0 
+				? Array.from(selectedApps)
+				: undefined;
 
-			let inMasterDimensions = context.inMasterDimensions || false;
-			let inMasterMeasures = context.inMasterMeasures || false;
-			let inSheetDimensions = context.inSheetDimensions || false;
-			let inSheetMeasures = context.inSheetMeasures || false;
+			const sheetIdsFilter = selectedSheets.size > 0
+				? Array.from(selectedSheets)
+				: undefined;
 
-			if (path === 'masterDimensions' || path.includes('masterDimensions[')) {
-				inMasterDimensions = true;
-			}
-			if (path === 'masterMeasures' || path.includes('masterMeasures[')) {
-				inMasterMeasures = true;
-			}
-			if (path === 'sheetDimensions' || path.includes('sheetDimensions[')) {
-				inSheetDimensions = true;
-			}
-			if (path === 'sheetMeasures' || path.includes('sheetMeasures[')) {
-				inSheetMeasures = true;
-			}
+			const typeFilter = selectedTypes.size > 0
+				? Array.from(selectedTypes)
+				: undefined;
 
-			let inQdim = context.inQdim || false;
-			let inQmeasure = context.inQmeasure || false;
-
-			if (path.endsWith('.qDim') || path.includes('.qDim.')) {
-				inQdim = true;
-			}
-			if (path.endsWith('.qMeasure') || path.includes('.qMeasure.')) {
-				inQmeasure = true;
-			}
-			if (path.endsWith('.qDef') || path.includes('.qDef.')) {
-				if (inSheetDimensions || path.includes('sheetDimensions[')) {
-					inQdim = true;
-				}
-				if (inSheetMeasures || path.includes('sheetMeasures[')) {
-					inQmeasure = true;
-				}
-			}
-
-			let objectType: string | null = context.objectType || null;
-			if (inQdim) {
-				if (inMasterDimensions) {
-					objectType = 'Master Dimension';
-				} else if (inSheetDimensions) {
-					objectType = 'Sheet Dimension';
-				} else if (path.includes('masterDimensions')) {
-					objectType = 'Master Dimension';
-				} else if (path.includes('sheetDimensions')) {
-					objectType = 'Sheet Dimension';
-				} else {
-					objectType = 'Sheet Dimension';
-				}
-			} else if (inQmeasure) {
-				if (inMasterMeasures) {
-					objectType = 'Master Measure';
-				} else if (inSheetMeasures) {
-					objectType = 'Sheet Measure';
-				} else if (path.includes('masterMeasures')) {
-					objectType = 'Master Measure';
-				} else if (path.includes('sheetMeasures')) {
-					objectType = 'Sheet Measure';
-				} else {
-					objectType = 'Sheet Measure';
-				}
-			}
-
-			let sheetId = context.sheetId;
-			let sheetName = context.sheetName;
-
-			if ((inSheetDimensions || inSheetMeasures) && typeof obj === 'object' && obj !== null && 'sheetId' in obj) {
-				sheetId = obj.sheetId;
-				if (sheetId) {
-					sheetName = getSheetNameFromId(sheetId);
-				}
-			}
-
-			const newContext = {
-				...context,
-				inQdim,
-				inQmeasure,
-				inMasterDimensions,
-				inMasterMeasures,
-				inSheetDimensions: inSheetDimensions || context.inSheetDimensions || false,
-				inSheetMeasures: inSheetMeasures || context.inSheetMeasures || false,
-				objectType: objectType || context.objectType || null,
-				sheetName: sheetName || context.sheetName,
-				sheetId: sheetId || context.sheetId
+			const filters: SearchFilters = {
+				tenantUser: cacheKey,
+				spaceIds: spaceIdsFilter,
+				appIds: appIdsFilter,
+				sheetIds: sheetIdsFilter,
+				objectTypes: typeFilter,
+				searchText: searchQuery.trim() || undefined
+				// No limit - return all matching results
 			};
 
-			const isQdimObject = (path.endsWith('.qDim') || (path.endsWith('.qDef') && inSheetDimensions));
-			const isQmeasureObject = (path.endsWith('.qMeasure') || (path.endsWith('.qDef') && inSheetMeasures));
-			
-			// For qDef that are strings, we still want to process them but use parentObj for label extraction
-			const shouldProcessAsObject = (isQdimObject || isQmeasureObject) && typeof obj === 'object';
-			const shouldProcessAsString = (isQdimObject || isQmeasureObject) && typeof obj === 'string';
+			// Get total count
+			totalSearchResults = await appCache.countSearchIndex(filters);
 
+			// Get results
+			const indexResults = await appCache.querySearchIndex(filters);
 
-			if (shouldProcessAsObject || shouldProcessAsString) {
-				// Include appId in the key since object paths are only unique within an app.
-				// If the same path exists in different apps, using only the path as a key would cause
-				// collisions and incorrect deduplication, leading to data from one app overwriting or
-				// being confused with data from another. Namespacing with appId ensures correctness
-				// by keeping objects from different apps distinct, even if their paths are identical.
-				const objectKey = `${appId}:${path}`;
-				if (!processedObjects.has(objectKey)) {
-					processedObjects.set(objectKey, true);
-					// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
-					// Pass the qDef string explicitly so it can be filtered out from labels
-					const labels = shouldProcessAsString 
-						? extractLabels(null, parentObj, newContext, obj)
-						: extractLabels(obj, parentObj, newContext, null);
-					
-					let searchableText = extractSearchableFields(obj);
-					// Add labels to searchable text so they can be searched
-					if (labels.length > 0) {
-						searchableText += ' ' + labels.join(' ');
-					}
-					// Add sheet and chart names/titles to searchable text
-					if (newContext.sheetName && typeof newContext.sheetName === 'string') {
-						searchableText += ' ' + newContext.sheetName.trim();
-					}
-					if (newContext.sheetTitle && typeof newContext.sheetTitle === 'string') {
-						searchableText += ' ' + newContext.sheetTitle.trim();
-					}
-					if (newContext.chartTitle && typeof newContext.chartTitle === 'string') {
-						searchableText += ' ' + newContext.chartTitle.trim();
-					}
-					// Also check for chartName if it exists
-					if (newContext.chartName && typeof newContext.chartName === 'string') {
-						searchableText += ' ' + newContext.chartName.trim();
-					}
-					
-					// Extract title from object
-					const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || '';
-					
-					let chartId = null;
-					if (parentObj && typeof parentObj === 'object' && parentObj.qInfo?.qId) {
-						chartId = parentObj.qInfo.qId;
-					} else if (typeof obj === 'object' && obj !== null && obj.qInfo?.qId) {
-						chartId = obj.qInfo.qId;
-					}
-					// Helper function to safely extract string from qDef value
-					function safeExtractQDefString(value: any): string | null {
-						if (value === null || value === undefined) return null;
-						if (typeof value === 'string' && value.trim()) return value.trim();
-						if (typeof value === 'object') {
-							// Try common Qlik object properties
-							if (value.qv && typeof value.qv === 'string' && value.qv.trim()) return value.qv.trim();
-							if (value.qDef && typeof value.qDef === 'string' && value.qDef.trim()) return value.qDef.trim();
-							if (value.qDef && typeof value.qDef === 'object' && value.qDef.qv && typeof value.qDef.qv === 'string') {
-								return value.qDef.qv.trim();
-							}
-							// Avoid [object Object] - return null if we can't extract a meaningful string
-							return null;
-						}
-						// For numbers, booleans, etc., convert to string
-						const str = String(value).trim();
-						return str || null;
-					}
-					
-					// Ensure qDef is accessible in the stored object
-					let objectToStore = obj;
-					if (typeof obj === 'string') {
-						// String qDef - wrap it
-						objectToStore = { qDef: obj };
-					} else if (typeof obj === 'object' && obj !== null) {
-						// Object qDim/qMeasure - ensure qDef is accessible
-						if (!obj.qDef) {
-							// Try to get qDef from parentObj
-							let qDefStr: string | null = null;
-							if (parentObj?.qDef) {
-								qDefStr = safeExtractQDefString(parentObj.qDef);
-							} else if (parentObj?.qDim?.qDef) {
-								qDefStr = safeExtractQDefString(parentObj.qDim.qDef);
-							} else if (parentObj?.qMeasure?.qDef) {
-								qDefStr = safeExtractQDefString(parentObj.qMeasure.qDef);
-							}
+			// Check if sheet state filter is active
+			const hasSheetStateFilter = selectedSheetStates.size > 0 && selectedSheetStates.size < 3;
 
-							// For qMeasure objects, check qLabelExpression as fallback
-							
-							if(!qDefStr && obj.qFieldDefs) {
-								if(obj.qFieldDefs.length > 0) {
-									qDefStr =  obj.qFieldDefs.join(' ');
-								}
-							}
+			// Convert to search results format, applying sheet state filter if needed
+			let results = indexResults.map(item => ({
+				path: item.path,
+				object: { qDef: item.definition, title: item.title, qFieldLabels: item.labels },
+				objectType: item.objectType,
+				context: {},
+				file: item.appId,
+				app: item.appName,
+				appId: item.appId,
+				sheet: item.sheetName || null,
+				sheetName: item.sheetName || null,
+				sheetId: item.sheetId || null,
+				sheetUrl: item.sheetUrl || null,
+				chartId: item.chartId || null,
+				chartTitle: item.chartTitle || null,
+				chartUrl: item.chartUrl || null,
+				labels: item.labels
+			}));
 
-
-							if (!qDefStr && obj.qLabelExpression) {
-								qDefStr = safeExtractQDefString(obj.qLabelExpression);
-							}
-						
-							if (qDefStr) {
-								objectToStore = { ...obj, qDef: qDefStr };
-							} 
-							
-						} else {
-							// obj.qDef exists - ensure it's a string
-							const qDefStr = safeExtractQDefString(obj.qDef);
-							if (qDefStr) {
-								objectToStore = { ...obj, qDef: qDefStr };
-							} else {
-								// If we can't extract a string, set to null to avoid [object Object]
-								objectToStore = { ...obj, qDef: null };
-							}
-						}
-					}
-					
-					index.push({
-						path: path,
-						object: objectToStore,
-						objectType: newContext.objectType,
-						context: newContext,
-						file: appId,
-						app: appName,
-						appId: appId,
-						sheet: sheetName || null,
-						sheetName: sheetName || null,
-						sheetId: newContext.sheetId || null,
-						sheetUrl: newContext.sheetUrl || null,
-						chartId: chartId,
-						chartTitle: newContext.chartTitle || null,
-						chartUrl: newContext.chartUrl || null,
-						searchableText,
-						labels,
-						title
-					});
-				}
-				return;
+			// Apply sheet state filter (uses runtime metadata, can't be done in IndexedDB)
+			if (hasSheetStateFilter) {
+				results = results.filter(item => {
+					const sheetState = getSheetState(item.sheetId);
+					return sheetState && selectedSheetStates.has(sheetState);
+				});
+				// Update the total count to reflect filtered results
+				totalSearchResults = results.length;
 			}
 
-			if (Array.isArray(obj)) {
-				obj.forEach((item, index) => {
-					let itemContext = newContext;
-					if (path === 'sheets' && item?.qProperty?.qMetaDef?.title) {
-						itemContext = {
-							...newContext,
-							sheetName: item.qProperty.qMetaDef.title,
-							sheetId: item.qProperty.qInfo?.qId
-						};
-					} else if ((path === 'sheetDimensions' || path === 'sheetMeasures') && item?.sheetId) {
-						const itemSheetName = getSheetNameFromId(item.sheetId) || null;
-						itemContext = {
-							...newContext,
-							sheetName: itemSheetName,
-							sheetId: item.sheetId,
-							inSheetDimensions: path === 'sheetDimensions',
-							inSheetMeasures: path === 'sheetMeasures'
-						};
-					}
-					extractObjects(item, `${path}[${index}]`, itemContext, appId, appName, item);
-				});
-			} else if (typeof obj === 'object' && obj !== null) {
-				Object.keys(obj).forEach((key) => {
-					const newPath = path ? `${path}.${key}` : key;
-					extractObjects(obj[key], newPath, newContext, appId, appName, obj);
-				});
-			}
+			searchResults = results;
+			unfilteredResults = searchResults;
+
+		} catch (err) {
+			console.error('IndexedDB search failed:', err);
+			searchResults = [];
+			totalSearchResults = 0;
+		} finally {
+			isSearching = false;
 		}
-
-		qlikApps.forEach((appData) => {
-			const { id: appId, name: appName, data } = appData;
-			
-			const appStructure = {
-				appLayout: data.appLayout,
-				masterDimensions: data.masterDimensions || [],
-				masterMeasures: data.masterMeasures || [],
-				sheets: data.sheets || [],
-				sheetDimensions: data.sheetDimensions || [],
-				sheetMeasures: data.sheetMeasures || []
-			};
-			
-			appStructure.masterDimensions.forEach((dim: any, idx: number) => {
-				if (dim.qDim) {
-					extractObjects(
-						dim.qDim,
-						`masterDimensions[${idx}].qDim`,
-						{ appName, appId, inMasterDimensions: true, inQdim: true },
-						appId,
-						appName,
-						dim
-				);
-			}
-			});
-			
-			appStructure.masterMeasures.forEach((measure: any, idx: number) => {
-				if (measure.qMeasure) {
-					extractObjects(
-						measure.qMeasure,
-						`masterMeasures[${idx}].qMeasure`,
-						{ appName, appId, inMasterMeasures: true, inQmeasure: true },
-						appId,
-						appName,
-						measure
-				);
-			}
-			});
-			
-			appStructure.sheetDimensions.forEach((dim: any, idx: number) => {
-				const sheetId = dim.sheetId;
-				const sheetName = dim.sheetTitle || getSheetNameFromId(sheetId) || null;
-				const sheetUrl = dim.sheetUrl || null;
-				const chartTitle = dim.chartTitle || null;
-				const chartUrl = dim.chartUrl || null;
-				
-				if (dim.qDef) {
-					// For inline dimensions, find the library reference if it exists for label extraction
-					let libraryDimForLabels = null;
-					if (dim.qLibraryId) {
-						libraryDimForLabels = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
-					}
-					// Pass the library dimension as parentObj so we can extract labels from it
-					extractObjects(
-						dim.qDef,
-						`sheetDimensions[${idx}].qDef`,
-						{
-							appName,
-							appId,
-							inSheetDimensions: true,
-							inQdim: true,
-							sheetId,
-							sheetName,
-							sheetUrl,
-							chartTitle,
-							chartUrl
-						},
-						appId,
-						appName,
-						libraryDimForLabels || dim // Use library dim if available for label extraction
-					);
-				} else if (dim.qLibraryId) {
-					// Library dimension reference - look up from master dimensions
-					const libraryDim = appStructure.masterDimensions.find((d: any) => d.qInfo?.qId === dim.qLibraryId);
-					if (libraryDim?.qDim) {
-						extractObjects(
-							libraryDim.qDim,
-							`sheetDimensions[${idx}].qDef`,
-							{
-								appName,
-								appId,
-								inSheetDimensions: true,
-								inQdim: true,
-								sheetId,
-								sheetName,
-								sheetUrl,
-								chartTitle,
-								chartUrl
-							},
-							appId,
-							appName,
-							libraryDim // Pass the full library dimension object
-						);
-					}
-				}
-			});
-			
-			appStructure.sheetMeasures.forEach((measure: any, idx: number) => {
-				const sheetId = measure.sheetId;
-				const sheetName = measure.sheetTitle || getSheetNameFromId(sheetId) || null;
-				const sheetUrl = measure.sheetUrl || null;
-				const chartTitle = measure.chartTitle || null;
-				const chartUrl = measure.chartUrl || null;
-				
-				if (measure.qDef) {
-					// For inline measures, find the library reference if it exists for label extraction
-					let libraryMeasureForLabels = null;
-					if (measure.qLibraryId) {
-						libraryMeasureForLabels = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
-					}
-					// Pass the library measure as parentObj so we can extract labels from it
-					extractObjects(
-						measure.qDef,
-						`sheetMeasures[${idx}].qDef`,
-						{
-							appName,
-							appId,
-							inSheetMeasures: true,
-							inQmeasure: true,
-							sheetId,
-							sheetName,
-							sheetUrl,
-							chartTitle,
-							chartUrl
-						},
-						appId,
-						appName,
-						libraryMeasureForLabels || measure // Use library measure if available for label extraction
-					);
-				} else if (measure.qLibraryId) {
-					// Library measure reference - look up from master measures
-					const libraryMeasure = appStructure.masterMeasures.find((m: any) => m.qInfo?.qId === measure.qLibraryId);
-					if (libraryMeasure?.qMeasure) {
-						extractObjects(
-							libraryMeasure.qMeasure,
-							`sheetMeasures[${idx}].qDef`,
-							{
-								appName,
-								appId,
-								inSheetMeasures: true,
-								inQmeasure: true,
-								sheetId,
-								sheetName,
-								sheetUrl,
-								chartTitle,
-								chartUrl
-							},
-							appId,
-							appName,
-							libraryMeasure // Pass the full library measure object
-						);
-					}
-				}
-			});
-		});
-
-		searchableIndex = index;
-
-		// Create searchable labels string for Fuse.js full-text search
-		const indexWithLabelsString = index.map(item => ({
-			...item,
-			labelsString: item.labels.join(' ')
-		}));
-		
-		fuseInstance = new Fuse(indexWithLabelsString, {
-			keys: [
-				{ name: 'title', weight: 0.5 },
-				{ name: 'labelsString', weight: 0.4 },
-				{ name: 'searchableText', weight: 0.3 },
-				{ name: 'app', weight: 0.1 },
-				{ name: 'sheetName', weight: 0.08 },
-				{ name: 'chartTitle', weight: 0.08 },
-				{ name: 'objectType', weight: 0.05 }
-			],
-			threshold: 0.3,
-			includeScore: true,
-			minMatchCharLength: 1,
-			ignoreLocation: true,
-			findAllMatches: true
-		});
-		
-		// Update searchableIndex to use the version with labelsString
-		searchableIndex = indexWithLabelsString;
-		
-		// Don't automatically trigger search here - let the effect handle it
-		// This prevents loops when apps are loading
 	}
 
 	// Configure Qlik API auth once - returns the API module
@@ -1229,21 +1069,34 @@
 				
 				// Load unchanged apps from cache immediately
 				if (unchanged.length > 0) {
+					// Only store lightweight metadata in memory
 					const cachedQlikApps = unchanged.map(cached => ({
 						id: cached.id,
 						name: cached.name,
-						data: cached.data
+						spaceId: cached.spaceId
 					}));
 					qlikApps = cachedQlikApps;
 					cacheLoadedAppsCount = unchanged.length;
 					
-					// Process sheets from cached apps
+					// Process sheets and store search index for cached apps
 					for (const cached of unchanged) {
 						await processSheets(cached.data, cached.name, cached.id);
+						
+						// Store search items in IndexedDB if not already there
+						if (tenantUrl && userId) {
+							await storeAppSearchIndex(
+								cached.id,
+								cached.name,
+								cached.spaceId,
+								cached.data,
+								tenantUrl,
+								userId
+							);
+						}
 					}
 					
-					// Build search index with cached data
-					buildSearchableIndex();
+					// Trigger search
+					await performIndexedDBSearch();
 					
 					console.log(`Loaded ${unchanged.length} apps from cache`);
 				}
@@ -1371,7 +1224,7 @@
 					
 					console.log(`App ${appName}:`, structureData);
 					
-					// Save to cache
+					// Save full data to IndexedDB cache (for persistence)
 					if (tenantUrl && currentUserId) {
 						await appCache.setAppData(
 							tenantUrl,
@@ -1382,23 +1235,33 @@
 							appUpdatedAt,
 							appSpaceId
 						);
+						
+						// Store search items in IndexedDB (memory efficient)
+						const itemCount = await storeAppSearchIndex(
+							appId,
+							appName,
+							appSpaceId,
+							structureData,
+							tenantUrl,
+							currentUserId
+						);
+						console.log(`Stored ${itemCount} search items for app ${appName}`);
 					}
 					
+					// Only store lightweight metadata in memory, not full structure data
 					const updatedApps = [...qlikApps, {
 						id: appId,
 						name: appName,
-						data: structureData
+						spaceId: appSpaceId
 					}];
 					qlikApps = updatedApps;
 					
 					await processSheets(structureData, appName, appId);
-					// Build index but don't trigger search - let the effect handle it
-					buildSearchableIndex();
-					// Trigger incremental search for this new app's data
+					
+					// Trigger search
 					if (qlikApps.length > 0) {
-						// Use untrack to prevent reactive loops
 						untrack(() => {
-							performSearch(true);
+							performIndexedDBSearch();
 						});
 					}
 					return 'loaded';
@@ -1427,7 +1290,13 @@
 			
 			for (let i = 0; i < appsToLoad.length; i += CONCURRENCY_LIMIT) {
 				const batch = appsToLoad.slice(i, i + CONCURRENCY_LIMIT);
-				await Promise.all(batch.map((appItem: AppItem) => processApp(appItem)));
+				const results = await Promise.all(batch.map((appItem: AppItem) => processApp(appItem)));
+				
+				// Count failed apps in this batch
+				const batchFailed = results.filter(r => r === 'error').length;
+				if (batchFailed > 0) {
+					failedAppsCount += batchFailed;
+				}
 				
 				// Check if all remaining apps are being skipped due to space filter
 				// If so, pause loading and wait for filter to change
@@ -1512,12 +1381,25 @@
 					appUpdatedAt,
 					appSpaceId
 				);
+				
+				// Store search items in IndexedDB
+				await storeAppSearchIndex(
+					appId,
+					appName,
+					appSpaceId,
+					structureData,
+					tenantUrl,
+					currentUserId
+				);
 			}
 			
-			qlikApps = [...qlikApps, { id: appId, name: appName, data: structureData }];
+			// Only store lightweight metadata in memory
+			qlikApps = [...qlikApps, { id: appId, name: appName, spaceId: appSpaceId }];
 			
 			await processSheets(structureData, appName, appId);
-			buildSearchableIndex();
+			
+			// Trigger search
+			performIndexedDBSearch();
 			
 			loadAppDataInBackground();
 			
@@ -1558,13 +1440,12 @@
 		apps = [];
 		appItems = [];
 		sheets = [];
-		searchableIndex = [];
-		fuseInstance = null;
 		loadingAppIds = new Set();
 		loadingProgress = { current: 0, total: 0, currentApp: '' };
 		hasNewDataPending = false;
 		lastRefreshedAppsCount = 0;
 		cacheLoadedAppsCount = 0;
+		failedAppsCount = 0;
 		pendingAppsToLoad = [];
 		isLoadingPaused = false;
 		// Note: We don't reset isAuthConfigured as the same auth session can be reused
@@ -1614,183 +1495,6 @@
 		});
 		return unsubscribe;
 	});
-
-	function performSearch(incremental: boolean = false) {
-		// Only show searching spinner if:
-		// 1. Not incremental (user changed search/filters) - always show spinner
-		// 2. Incremental but no results yet - show spinner until we have results
-		// This prevents the table from flashing during incremental updates when results already exist
-		if (!incremental) {
-			isSearching = true;
-		} else if (searchResults.length === 0) {
-			// Only show spinner during incremental if we don't have results yet
-			isSearching = true;
-		}
-		// If incremental and we already have results, keep isSearching as is (don't change it)
-		
-		const query = searchQuery.trim();
-		const hasQuery = query.length > 0;
-		
-		const hasSpaceSelections = selectedSpaces.size > 0;
-		const hasAppSelections = selectedApps.size > 0;
-		const hasSheetSelections = selectedSheets.size > 0;
-		const hasTypeSelections = selectedTypes.size > 0;
-		const hasSheetStateSelections = selectedSheetStates.size > 0;
-		
-		// Check if all items are selected (compare against total counts, not filtered available items)
-		// Add 1 for the Personal space
-		const allSpacesSelected = hasSpaceSelections && selectedSpaces.size === (spaces.length + 1);
-		// For apps, compare against the total apps list, not filtered availableApps
-		const allAppsSelected = hasAppSelections && selectedApps.size === apps.length;
-		const allSheetsSelected = hasSheetSelections && availableSheets.length > 0 && selectedSheets.size >= availableSheets.length;
-		const allTypesSelected = hasTypeSelections && selectedTypes.size === typeOptions.length;
-		const allSheetStatesSelected = hasSheetStateSelections && selectedSheetStates.size === 3; // Public, Community, Private
-		
-		const hasSpaceFilters = hasSpaceSelections && !allSpacesSelected;
-		const hasAppFilters = hasAppSelections && !allAppsSelected;
-		const hasSheetFilters = hasSheetSelections && (!hasAppSelections || !allSheetsSelected);
-		const hasTypeFilters = hasTypeSelections && !allTypesSelected;
-		const hasSheetStateFilters = hasSheetStateSelections && !allSheetStatesSelected;
-		
-		const hasAnySelections = hasSpaceSelections || hasAppSelections || hasSheetSelections || hasTypeSelections || hasSheetStateSelections;
-		
-		// Debug: log filter state
-		if (hasAppSelections) {
-			console.log('App filter debug:', {
-				selectedApps: Array.from(selectedApps),
-				hasAppSelections,
-				allAppsSelected,
-				hasAppFilters,
-				appsLength: apps.length,
-				availableAppsLength: availableApps.length
-			});
-		}
-
-		if (!hasQuery && !hasAnySelections && qlikApps.length === 0) {
-			searchResults = [];
-			unfilteredResults = [];
-			isSearching = false;
-			return;
-		}
-
-		let candidateResults: SearchableItem[] = [];
-		if (hasQuery && fuseInstance) {
-			const fuseResults = fuseInstance.search(query);
-			candidateResults = fuseResults.map(result => result.item);
-		} else {
-			candidateResults = searchableIndex;
-		}
-		
-		// When incrementally loading, append to existing results instead of clearing
-		// Only clear when user explicitly changes search/filters
-		const allResults: typeof searchResults = incremental ? [...searchResults] : [];
-		if (!incremental) {
-			unfilteredResults = [];
-		}
-		
-		// Track existing paths to avoid duplicates when appending incrementally
-		// Use appId:path as the key since paths are only unique within an app
-		const existingPaths = incremental ? new Set(searchResults.map(r => `${r.appId}:${r.path}`)) : new Set();
-		
-		for (const item of candidateResults) {
-			const sheetName = item.sheetName || item.sheet;
-			
-			// Skip if already in results (when appending incrementally)
-			// Use appId:path to match the deduplication logic used when building the index
-			if (incremental && existingPaths.has(`${item.appId}:${item.path}`)) {
-				continue;
-			}
-			
-			// Filter by space first (if space filter is active)
-			if (hasSpaceFilters) {
-				const app = apps.find(a => a.id === item.appId);
-				if (!app) {
-					continue;
-				}
-				// Check if "Personal" is selected and app has no space
-				const personalSelected = selectedSpaces.has(PERSONAL_SPACE_ID);
-				const appHasNoSpace = !app.spaceId;
-				// Only allow apps through the space filter if "Personal" is selected and app has no space,
-				// otherwise skip if the app's space is not selected
-				if (!(personalSelected && appHasNoSpace) && (!app.spaceId || !selectedSpaces.has(app.spaceId))) {
-					continue;
-				}
-			}
-
-			if (hasAppFilters && !selectedApps.has(item.appId)) {
-				continue;
-			}
-
-			if (hasSheetFilters) {
-				if (!item.sheetId) {
-					continue;
-				}
-				if (!selectedSheets.has(item.sheetId)) {
-					continue;
-				}
-			}
-
-			if (hasTypeFilters) {
-				if (!item.objectType) {
-					continue;
-				}
-				if (!selectedTypes.has(item.objectType)) {
-					continue;
-				}
-			}
-
-			if (hasSheetStateFilters) {
-				const sheetState = getSheetState(item.sheetId);
-				if (!sheetState || !selectedSheetStates.has(sheetState)) {
-					continue;
-				}
-			}
-
-			// Add to unfilteredResults (only if not incremental or not already present)
-			// Use appId:path to match the deduplication logic used when building the index
-			if (!incremental || !unfilteredResults.find(r => r.appId === item.appId && r.path === item.path)) {
-				unfilteredResults.push({
-					path: item.path,
-					object: item.object,
-					objectType: item.objectType,
-					context: item.context,
-					file: item.file,
-					app: item.app,
-					appId: item.appId,
-					sheet: sheetName,
-					sheetName: sheetName,
-					sheetId: item.sheetId || null,
-					sheetUrl: item.sheetUrl || null,
-					chartId: item.chartId || null,
-					chartTitle: item.chartTitle || null,
-					chartUrl: item.chartUrl || null,
-					labels: item.labels || []
-				});
-			}
-
-		allResults.push({
-			path: item.path,
-			object: item.object,
-			objectType: item.objectType,
-			context: item.context,
-			file: item.file,
-			app: item.app,
-			appId: item.appId,
-			sheet: sheetName,
-			sheetName: sheetName,
-			sheetId: item.sheetId || null,
-			sheetUrl: item.sheetUrl || null,
-			chartId: item.chartId || null,
-			chartTitle: item.chartTitle || null,
-			chartUrl: item.chartUrl || null,
-			labels: item.labels || []
-		});
-	}
-	
-	searchResults = allResults;
-	isSearching = false;
-	// Don't reset page here - the effect will handle it based on query changes
-	}
 
 	const typeOptions = ['Master Measure', 'Master Dimension', 'Sheet Measure', 'Sheet Dimension'];
 	
@@ -1846,12 +1550,13 @@
 		if (appsLoaded > 0) {
 			isSearching = true;
 			searchEffectTimeout = setTimeout(() => {
-				performSearch(false);
+				performIndexedDBSearch();
 			}, 200);
 		} else {
 			// No apps loaded yet - clear results
 			searchResults = [];
 			unfilteredResults = [];
+			totalSearchResults = 0;
 			isSearching = false;
 		}
 		
@@ -1881,8 +1586,7 @@
 			// Loading just completed - auto-refresh the table
 			hasNewDataPending = false;
 			lastRefreshedAppsCount = qlikApps.length;
-			// Use incremental search to avoid clearing existing results
-			performSearch(true);
+			performIndexedDBSearch();
 		}
 		
 		previousLoadingState = loading;
@@ -1891,7 +1595,7 @@
 	function refreshTable() {
 		lastRefreshedAppsCount = qlikApps.length;
 		hasNewDataPending = false;
-		performSearch();
+		performIndexedDBSearch();
 	}
 
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1902,7 +1606,7 @@
 			clearTimeout(searchTimeout);
 		}
 		searchTimeout = setTimeout(() => {
-			performSearch();
+			performIndexedDBSearch();
 		}, 300);
 	}
 
@@ -2167,7 +1871,9 @@
 				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 }
 					<CompletionIndicator
 						totalApps={qlikApps.length}
+						expectedTotal={appItems.length}
 						cachedCount={cacheLoadedAppsCount}
+						failedCount={failedAppsCount}
 						onRefresh={refreshData}
 					/>
 				{/if}
