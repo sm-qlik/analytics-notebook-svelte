@@ -310,8 +310,6 @@
 						dim,
 					{
 						getSheetNameFromId,
-						extractLabels,
-						extractSearchableFields,
 						processedObjects,
 						indexPush
 					}

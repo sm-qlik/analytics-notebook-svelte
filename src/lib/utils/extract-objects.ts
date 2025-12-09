@@ -1,3 +1,4 @@
+import { extractLabels, extractSearchableFields } from './search-utils';
 export type ExtractContext = {
   inMasterDimensions?: boolean;
   inMasterMeasures?: boolean;
@@ -18,8 +19,6 @@ export type ExtractContext = {
 
 export type Helpers = {
   getSheetNameFromId: (sheetId: string | null) => string | null;
-  extractLabels: (obj: any, parentObj: any, context: any, qDefString: string | null) => string[];
-  extractSearchableFields: (obj: any) => string;
   processedObjects: Map<string, boolean>;
   indexPush: (item: {
     path: string;
@@ -53,7 +52,7 @@ export function extractObjects(
 ) {
   if (obj === null || obj === undefined) return;
 
-  const { getSheetNameFromId, extractLabels, extractSearchableFields, processedObjects, indexPush } = helpers;
+  const { getSheetNameFromId, processedObjects, indexPush } = helpers;
 
   let inMasterDimensions = context.inMasterDimensions || false;
   let inMasterMeasures = context.inMasterMeasures || false;
