@@ -1257,10 +1257,12 @@
 			const loadedAppIds = new Set(qlikApps.map(a => a.id));
 			
 			// Use specific apps if provided, otherwise determine from appItems
-			// Also include any pending apps that were waiting
+			// Also include any pending apps that were waiting (only when not using specific apps)
 			let appsToLoad: AppItem[];
 			if (specificAppsToLoad) {
-				appsToLoad = [...specificAppsToLoad, ...pendingAppsToLoad].filter(app => !loadedAppIds.has(app.resourceId));
+				// When specific apps are provided (e.g., from resumeLoadingIfNeeded), only use those
+				// Don't append pendingAppsToLoad as it may contain non-matching apps
+				appsToLoad = specificAppsToLoad.filter(app => !loadedAppIds.has(app.resourceId));
 			} else {
 				appsToLoad = [...appItems, ...pendingAppsToLoad].filter(app => !loadedAppIds.has(app.resourceId));
 			}
@@ -1273,8 +1275,10 @@
 				return true;
 			});
 			
-			// Clear pending apps since we're processing them now
-			pendingAppsToLoad = [];
+			// Remove only the apps we're actually loading from pendingAppsToLoad
+			// (don't clear the entire array as it may contain other apps that don't match the filter)
+			const appsToLoadIds = new Set(appsToLoad.map(app => app.resourceId));
+			pendingAppsToLoad = pendingAppsToLoad.filter(app => !appsToLoadIds.has(app.resourceId));
 			
 			if (appsToLoad.length === 0) {
 				isLoadingAppData = false;
@@ -1326,9 +1330,7 @@
 					// Get the app document from the session
 					const app = await session.getDoc();
 					const structureData = await EngineInterface.fetchAppStructureData(app, tenantUrl, appId);
-					
-					console.log(`App ${appName}:`, structureData);
-					
+										
 					// Save full data to IndexedDB cache (for persistence)
 					if (tenantUrl && currentUserId) {
 						await appCache.setAppData(
