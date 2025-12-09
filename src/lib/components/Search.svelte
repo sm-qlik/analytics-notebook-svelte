@@ -11,6 +11,7 @@
 	import type { SearchResultItem } from '$lib/utils/search-result-item';
 	import LoadingIndicator from './LoadingIndicator.svelte';
 	import CompletionIndicator from './CompletionIndicator.svelte';
+    import { extractObjects } from '$lib/utils/extract-objects';
 
 	let searchQuery = $state('');	
 	let searchResults = $state([] as Array<SearchResultItem>);
@@ -525,266 +526,7 @@
 		
 		const index: SearchableItem[] = [];
 		const processedObjects = new Map<string, boolean>();
-
-		function extractObjects(obj: any, path = '', context: any = {}, appId: string, appName: string, parentObj: any = null) {
-			if (obj === null || obj === undefined) return;
-
-
-			let inMasterDimensions = context.inMasterDimensions || false;
-			let inMasterMeasures = context.inMasterMeasures || false;
-			let inSheetDimensions = context.inSheetDimensions || false;
-			let inSheetMeasures = context.inSheetMeasures || false;
-
-			if (path === 'masterDimensions' || path.includes('masterDimensions[')) {
-				inMasterDimensions = true;
-			}
-			if (path === 'masterMeasures' || path.includes('masterMeasures[')) {
-				inMasterMeasures = true;
-			}
-			if (path === 'sheetDimensions' || path.includes('sheetDimensions[')) {
-				inSheetDimensions = true;
-			}
-			if (path === 'sheetMeasures' || path.includes('sheetMeasures[')) {
-				inSheetMeasures = true;
-			}
-
-			let inQdim = context.inQdim || false;
-			let inQmeasure = context.inQmeasure || false;
-
-			if (path.endsWith('.qDim') || path.includes('.qDim.')) {
-				inQdim = true;
-			}
-			if (path.endsWith('.qMeasure') || path.includes('.qMeasure.')) {
-				inQmeasure = true;
-			}
-			if (path.endsWith('.qDef') || path.includes('.qDef.')) {
-				if (inSheetDimensions || path.includes('sheetDimensions[')) {
-					inQdim = true;
-				}
-				if (inSheetMeasures || path.includes('sheetMeasures[')) {
-					inQmeasure = true;
-				}
-			}
-
-			let objectType: string | null = context.objectType || null;
-			if (inQdim) {
-				if (inMasterDimensions) {
-					objectType = 'Master Dimension';
-				} else if (inSheetDimensions) {
-					objectType = 'Sheet Dimension';
-				} else if (path.includes('masterDimensions')) {
-					objectType = 'Master Dimension';
-				} else if (path.includes('sheetDimensions')) {
-					objectType = 'Sheet Dimension';
-				} else {
-					objectType = 'Sheet Dimension';
-				}
-			} else if (inQmeasure) {
-				if (inMasterMeasures) {
-					objectType = 'Master Measure';
-				} else if (inSheetMeasures) {
-					objectType = 'Sheet Measure';
-				} else if (path.includes('masterMeasures')) {
-					objectType = 'Master Measure';
-				} else if (path.includes('sheetMeasures')) {
-					objectType = 'Sheet Measure';
-				} else {
-					objectType = 'Sheet Measure';
-				}
-			}
-
-			let sheetId = context.sheetId;
-			let sheetName = context.sheetName;
-
-			if ((inSheetDimensions || inSheetMeasures) && typeof obj === 'object' && obj !== null && 'sheetId' in obj) {
-				sheetId = obj.sheetId;
-				if (sheetId) {
-					sheetName = getSheetNameFromId(sheetId);
-				}
-			}
-
-			const newContext = {
-				...context,
-				inQdim,
-				inQmeasure,
-				inMasterDimensions,
-				inMasterMeasures,
-				inSheetDimensions: inSheetDimensions || context.inSheetDimensions || false,
-				inSheetMeasures: inSheetMeasures || context.inSheetMeasures || false,
-				objectType: objectType || context.objectType || null,
-				sheetName: sheetName || context.sheetName,
-				sheetId: sheetId || context.sheetId
-			};
-
-			const isQdimObject = (path.endsWith('.qDim') || (path.endsWith('.qDef') && inSheetDimensions));
-			const isQmeasureObject = (path.endsWith('.qMeasure') || (path.endsWith('.qDef') && inSheetMeasures));
-			
-			// For qDef that are strings, we still want to process them but use parentObj for label extraction
-			const shouldProcessAsObject = (isQdimObject || isQmeasureObject) && typeof obj === 'object';
-			const shouldProcessAsString = (isQdimObject || isQmeasureObject) && typeof obj === 'string';
-
-
-			if (shouldProcessAsObject || shouldProcessAsString) {
-				// Include appId in the key since object paths are only unique within an app.
-				// If the same path exists in different apps, using only the path as a key would cause
-				// collisions and incorrect deduplication, leading to data from one app overwriting or
-				// being confused with data from another. Namespacing with appId ensures correctness
-				// by keeping objects from different apps distinct, even if their paths are identical.
-				const objectKey = `${appId}:${path}`;
-				if (!processedObjects.has(objectKey)) {
-					processedObjects.set(objectKey, true);
-					// For string qDef, we need to look at parentObj for labels; for object qDim/qMeasure, use obj
-					// Pass the qDef string explicitly so it can be filtered out from labels
-					const labels = shouldProcessAsString 
-						? extractLabels(null, parentObj, newContext, obj)
-						: extractLabels(obj, parentObj, newContext, null);
-					
-					let searchableText = extractSearchableFields(obj);
-					// Add labels to searchable text so they can be searched
-					if (labels.length > 0) {
-						searchableText += ' ' + labels.join(' ');
-					}
-					// Add sheet and chart names/titles to searchable text
-					if (newContext.sheetName && typeof newContext.sheetName === 'string') {
-						searchableText += ' ' + newContext.sheetName.trim();
-					}
-					if (newContext.sheetTitle && typeof newContext.sheetTitle === 'string') {
-						searchableText += ' ' + newContext.sheetTitle.trim();
-					}
-					if (newContext.chartTitle && typeof newContext.chartTitle === 'string') {
-						searchableText += ' ' + newContext.chartTitle.trim();
-					}
-					// Also check for chartName if it exists
-					if (newContext.chartName && typeof newContext.chartName === 'string') {
-						searchableText += ' ' + newContext.chartName.trim();
-					}
-					
-					// Extract title from object
-					const title = obj?.title || obj?.qAlias || (Array.isArray(obj?.qFieldLabels) && obj.qFieldLabels.length > 0 ? obj.qFieldLabels[0] : '') || '';
-					
-					let chartId = null;
-					if (parentObj && typeof parentObj === 'object' && parentObj.qInfo?.qId) {
-						chartId = parentObj.qInfo.qId;
-					} else if (typeof obj === 'object' && obj !== null && obj.qInfo?.qId) {
-						chartId = obj.qInfo.qId;
-					}
-					// Helper function to safely extract string from qDef value
-					function safeExtractQDefString(value: any): string | null {
-						if (value === null || value === undefined) return null;
-						if (typeof value === 'string' && value.trim()) return value.trim();
-						if (typeof value === 'object') {
-							// Try common Qlik object properties
-							if (value.qv && typeof value.qv === 'string' && value.qv.trim()) return value.qv.trim();
-							if (value.qDef && typeof value.qDef === 'string' && value.qDef.trim()) return value.qDef.trim();
-							if (value.qDef && typeof value.qDef === 'object' && value.qDef.qv && typeof value.qDef.qv === 'string') {
-								return value.qDef.qv.trim();
-							}
-							// Avoid [object Object] - return null if we can't extract a meaningful string
-							return null;
-						}
-						// For numbers, booleans, etc., convert to string
-						const str = String(value).trim();
-						return str || null;
-					}
-					
-					// Ensure qDef is accessible in the stored object
-					let objectToStore = obj;
-					if (typeof obj === 'string') {
-						// String qDef - wrap it
-						objectToStore = { qDef: obj };
-					} else if (typeof obj === 'object' && obj !== null) {
-						// Object qDim/qMeasure - ensure qDef is accessible
-						if (!obj.qDef) {
-							// Try to get qDef from parentObj
-							let qDefStr: string | null = null;
-							if (parentObj?.qDef) {
-								qDefStr = safeExtractQDefString(parentObj.qDef);
-							} else if (parentObj?.qDim?.qDef) {
-								qDefStr = safeExtractQDefString(parentObj.qDim.qDef);
-							} else if (parentObj?.qMeasure?.qDef) {
-								qDefStr = safeExtractQDefString(parentObj.qMeasure.qDef);
-							}
-
-							// For qMeasure objects, check qLabelExpression as fallback
-							
-							if(!qDefStr && obj.qFieldDefs) {
-								if(obj.qFieldDefs.length > 0) {
-									qDefStr =  obj.qFieldDefs.join(' ');
-								}
-							}
-
-
-							if (!qDefStr && obj.qLabelExpression) {
-								qDefStr = safeExtractQDefString(obj.qLabelExpression);
-							}
-						
-							if (qDefStr) {
-								objectToStore = { ...obj, qDef: qDefStr };
-							} 
-							
-						} else {
-							// obj.qDef exists - ensure it's a string
-							const qDefStr = safeExtractQDefString(obj.qDef);
-							if (qDefStr) {
-								objectToStore = { ...obj, qDef: qDefStr };
-							} else {
-								// If we can't extract a string, set to null to avoid [object Object]
-								objectToStore = { ...obj, qDef: null };
-							}
-						}
-					}
-					
-					index.push({
-						path: path,
-						object: objectToStore,
-						objectType: newContext.objectType,
-						context: newContext,
-						file: appId,
-						app: appName,
-						appId: appId,
-						sheet: sheetName || null,
-						sheetName: sheetName || null,
-						sheetId: newContext.sheetId || null,
-						sheetUrl: newContext.sheetUrl || null,
-						chartId: chartId,
-						chartTitle: newContext.chartTitle || null,
-						chartUrl: newContext.chartUrl || null,
-						searchableText,
-						labels,
-						title
-					});
-				}
-				return;
-			}
-
-			if (Array.isArray(obj)) {
-				obj.forEach((item, index) => {
-					let itemContext = newContext;
-					if (path === 'sheets' && item?.qProperty?.qMetaDef?.title) {
-						itemContext = {
-							...newContext,
-							sheetName: item.qProperty.qMetaDef.title,
-							sheetId: item.qProperty.qInfo?.qId
-						};
-					} else if ((path === 'sheetDimensions' || path === 'sheetMeasures') && item?.sheetId) {
-						const itemSheetName = getSheetNameFromId(item.sheetId) || null;
-						itemContext = {
-							...newContext,
-							sheetName: itemSheetName,
-							sheetId: item.sheetId,
-							inSheetDimensions: path === 'sheetDimensions',
-							inSheetMeasures: path === 'sheetMeasures'
-						};
-					}
-					extractObjects(item, `${path}[${index}]`, itemContext, appId, appName, item);
-				});
-			} else if (typeof obj === 'object' && obj !== null) {
-				Object.keys(obj).forEach((key) => {
-					const newPath = path ? `${path}.${key}` : key;
-					extractObjects(obj[key], newPath, newContext, appId, appName, obj);
-				});
-			}
-		}
+		function indexPush(item: any) { index.push(item); }
 
 		qlikApps.forEach((appData) => {
 			const { id: appId, name: appName, data } = appData;
@@ -806,7 +548,14 @@
 						{ appName, appId, inMasterDimensions: true, inQdim: true },
 						appId,
 						appName,
-						dim
+						dim,
+					{
+						getSheetNameFromId,
+						extractLabels,
+						extractSearchableFields,
+						processedObjects,
+						indexPush
+					}
 				);
 			}
 			});
@@ -819,7 +568,14 @@
 						{ appName, appId, inMasterMeasures: true, inQmeasure: true },
 						appId,
 						appName,
-						measure
+						measure,
+					{
+						getSheetNameFromId,
+						extractLabels,
+						extractSearchableFields,
+						processedObjects,
+						indexPush
+					}
 				);
 			}
 			});
@@ -854,7 +610,14 @@
 						},
 						appId,
 						appName,
-						libraryDimForLabels || dim // Use library dim if available for label extraction
+						libraryDimForLabels || dim, // Use library dim if available for label extraction
+					{
+						getSheetNameFromId,
+						extractLabels,
+						extractSearchableFields,
+						processedObjects,
+						indexPush
+					}
 					);
 				} else if (dim.qLibraryId) {
 					// Library dimension reference - look up from master dimensions
@@ -876,7 +639,14 @@
 							},
 							appId,
 							appName,
-							libraryDim // Pass the full library dimension object
+							libraryDim, // Pass the full library dimension object
+							{
+								getSheetNameFromId,
+								extractLabels,
+								extractSearchableFields,
+								processedObjects,
+								indexPush
+							}							
 						);
 					}
 				}
@@ -912,7 +682,14 @@
 						},
 						appId,
 						appName,
-						libraryMeasureForLabels || measure // Use library measure if available for label extraction
+						libraryMeasureForLabels || measure, // Use library measure if available for label extraction
+											{
+						getSheetNameFromId,
+						extractLabels,
+						extractSearchableFields,
+						processedObjects,
+						indexPush
+					}
 					);
 				} else if (measure.qLibraryId) {
 					// Library measure reference - look up from master measures
@@ -934,7 +711,14 @@
 							},
 							appId,
 							appName,
-							libraryMeasure // Pass the full library measure object
+							libraryMeasure, // Pass the full library measure object
+							{
+								getSheetNameFromId,
+								extractLabels,
+								extractSearchableFields,
+								processedObjects,
+								indexPush
+							}
 						);
 					}
 				}
