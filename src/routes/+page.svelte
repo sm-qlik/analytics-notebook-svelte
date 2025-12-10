@@ -132,11 +132,11 @@
     if (typeof window !== 'undefined') {
       // Clear all Qlik-related storage
       localStorage.removeItem('currentTenantUrl');
-      localStorage.removeItem('qlik-tenant-history');
+      // Note: We preserve qlik-tenant-history so users can see recent tenants after logout
       
-      // Clear all Qlik-related localStorage keys
+      // Clear all Qlik-related localStorage keys (except tenant history)
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('qlik-') || key.startsWith('@qlik/')) {
+        if ((key.startsWith('qlik-') || key.startsWith('@qlik/')) && key !== 'qlik-tenant-history') {
           localStorage.removeItem(key);
         }
       });
