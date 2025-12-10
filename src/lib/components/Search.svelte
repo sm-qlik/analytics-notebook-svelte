@@ -1643,6 +1643,7 @@
 				value={searchQuery}
 				{isSearching}
 				onInput={handleSearchInput}
+				onClear={() => handleImmediateSearch('')}
 			/>
 
 			<!-- Type Filter Chips -->
