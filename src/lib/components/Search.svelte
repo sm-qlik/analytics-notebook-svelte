@@ -2201,7 +2201,6 @@
 					onCopyToClipboard={copyToClipboard}
 					copiedDefinitionId={copiedDefinitionId}
 					tenantUrl={currentTenantUrl}
-					favorites={favorites}
 					onToggleFavorite={toggleFavorite}
 					isFavorite={isFavorite}
 					/>

@@ -17,12 +17,11 @@
 		onCopyToClipboard: (text: string, id: string) => void;
 		copiedDefinitionId: string | null;
 		tenantUrl: string | null;
-		favorites: Set<string>;
 		onToggleFavorite: (appId: string, path: string) => void;
 		isFavorite: (appId: string, path: string) => boolean;
 	}
 
-	let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl, favorites, onToggleFavorite, isFavorite }: Props = $props();
+	let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite }: Props = $props();
 
 	let itemsPerPage = $state(25);
 	const pageSizeOptions = [25, 50, 100, 200];
