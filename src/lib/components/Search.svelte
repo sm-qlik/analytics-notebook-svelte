@@ -412,6 +412,24 @@
 	// Track if a search is currently in progress to prevent race conditions
 	let isSearchInProgress = false;
 	let pendingSearchRequest = false;
+	
+	// Debounced search trigger for incremental updates during loading
+	let incrementalSearchTimeout: ReturnType<typeof setTimeout> | null = null;
+	
+	function triggerIncrementalSearch() {
+		// Debounce incremental search updates to avoid too many rapid searches
+		if (incrementalSearchTimeout) {
+			clearTimeout(incrementalSearchTimeout);
+		}
+		incrementalSearchTimeout = setTimeout(() => {
+			// Always trigger search during loading to show results as they become available
+			// The search function will handle empty queries/filters and show all results
+			if (qlikApps.length > 0) {
+				performIndexedDBSearch();
+			}
+			incrementalSearchTimeout = null;
+		}, 200); // 200ms debounce for incremental updates
+	}
 
 	/**
 	 * Perform search using IndexedDB - much more memory efficient for large datasets
@@ -989,8 +1007,10 @@
 					
 					await processSheets(structureData, appName, appId);
 					
-					// Don't trigger search here - let the loading completion effect handle it
-					// This prevents multiple rapid searches during batch loading
+					// Trigger incremental search update so table shows new results as they load
+					// This ensures the table updates progressively as apps finish loading
+					triggerIncrementalSearch();
+					
 					return 'loaded';
 				} catch (err: any) {
 					console.warn(`Failed to load app ${appName}:`, err);
@@ -1082,6 +1102,11 @@
 			console.error('Failed to load app data:', err);
 		} finally {
 			isLoadingAppData = false;
+			// Clear any pending incremental search timeout
+			if (incrementalSearchTimeout) {
+				clearTimeout(incrementalSearchTimeout);
+				incrementalSearchTimeout = null;
+			}
 			// Ensure progress reflects actual loaded apps
 			loadingProgress = { 
 				current: qlikApps.length, 
