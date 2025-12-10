@@ -599,7 +599,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 								</button>
 							</td>
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
-								<div class="flex items-start gap-2 group">
+								<div class="flex flex-col items-end gap-2 group">
 									<div class="flex-1">
 										{#if name.length > 0}
 											<div class="flex flex-wrap gap-1">
@@ -639,7 +639,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 										{@html highlightText(definition, debouncedQuery)}
 									</div>
 									{#if definition !== 'N/A'}
-										<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+										<div class="flex flex-col items-end gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
 											<button
 												type="button"
 												onclick={() => onCopyToClipboard(definition, getCopyId(result, 'definition'))}
@@ -676,11 +676,10 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 													</svg>
 												{/if}
 											</button>
-											<!-- Placeholder search icon (not hooked up yet) -->
 											<button
 												type="button"
 												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-												title="Search for definition"
+												title="Search for duplicates"
 												onclick={() => onSearchWithQuery(definition)}
 											>
 												<svg
