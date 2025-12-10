@@ -196,6 +196,25 @@ export function extractStringLabels(labels: any): string[] {
 export function extractChartTitle(obj: any): string | null {
 	if (!obj) return null;
 	
+	// Try qProperty.qMetaDef.title (from full property tree)
+	if (obj.qProperty?.qMetaDef?.title) {
+		const title = obj.qProperty.qMetaDef.title;
+		if (typeof title === 'string' && title.trim()) {
+			return title.trim();
+		}
+		if (typeof title === 'object' && title.qv && typeof title.qv === 'string' && title.qv.trim()) {
+			return title.qv.trim();
+		}
+	}
+	
+	// Try qLayout.qMeta.title (from layout)
+	if (obj.qLayout?.qMeta?.title) {
+		const title = obj.qLayout.qMeta.title;
+		if (typeof title === 'string' && title.trim()) {
+			return title.trim();
+		}
+	}
+	
 	// Try direct title first
 	if (obj.title && typeof obj.title === 'string' && obj.title.trim()) {
 		return obj.title.trim();
@@ -209,6 +228,17 @@ export function extractChartTitle(obj: any): string | null {
 	// Try qMetaDef.title
 	if (obj.qMetaDef?.title && typeof obj.qMetaDef.title === 'string' && obj.qMetaDef.title.trim()) {
 		return obj.qMetaDef.title.trim();
+	}
+	
+	// Try qProperty.title (alternative location)
+	if (obj.qProperty?.title) {
+		const title = obj.qProperty.title;
+		if (typeof title === 'string' && title.trim()) {
+			return title.trim();
+		}
+		if (typeof title === 'object' && title.qv && typeof title.qv === 'string' && title.qv.trim()) {
+			return title.qv.trim();
+		}
 	}
 	
 	// Try qStringExpression.qExpr (expression format - return as-is)
