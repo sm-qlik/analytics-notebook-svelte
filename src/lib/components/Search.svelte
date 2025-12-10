@@ -248,6 +248,73 @@
 	let selectedSheets = $state(new Set<string>());
 	let selectedTypes = $state(new Set<string>());
 	let selectedSheetStates = $state(new Set<string>());
+	let showFavoritesOnly = $state(false);
+	
+	// Favorites state - stored in localStorage, keyed by tenant/user
+	// Key format: `favorites:${tenantUrl}:${userId}`
+	let favorites = $state<Set<string>>(new Set());
+	
+	// Generate a unique key for a favorite item (appId:path)
+	function getFavoriteKey(appId: string, path: string): string {
+		return `${appId}:${path}`;
+	}
+	
+	// Load favorites from localStorage
+	function loadFavorites() {
+		if (!currentTenantUrl || !currentUserId) {
+			favorites = new Set();
+			return;
+		}
+		
+		try {
+			const key = `favorites:${currentTenantUrl}:${currentUserId}`;
+			const stored = localStorage.getItem(key);
+			if (stored) {
+				const favoriteArray = JSON.parse(stored) as string[];
+				favorites = new Set(favoriteArray);
+			} else {
+				favorites = new Set();
+			}
+		} catch (err) {
+			console.warn('Failed to load favorites:', err);
+			favorites = new Set();
+		}
+	}
+	
+	// Save favorites to localStorage
+	function saveFavorites() {
+		if (!currentTenantUrl || !currentUserId) {
+			return;
+		}
+		
+		try {
+			const key = `favorites:${currentTenantUrl}:${currentUserId}`;
+			localStorage.setItem(key, JSON.stringify(Array.from(favorites)));
+		} catch (err) {
+			console.warn('Failed to save favorites:', err);
+		}
+	}
+	
+	// Toggle favorite status for an item
+	function toggleFavorite(appId: string, path: string) {
+		const favoriteKey = getFavoriteKey(appId, path);
+		const newFavorites = new Set(favorites);
+		
+		if (newFavorites.has(favoriteKey)) {
+			newFavorites.delete(favoriteKey);
+		} else {
+			newFavorites.add(favoriteKey);
+		}
+		
+		favorites = newFavorites;
+		saveFavorites();
+	}
+	
+	// Check if an item is favorited
+	function isFavorite(appId: string, path: string): boolean {
+		const favoriteKey = getFavoriteKey(appId, path);
+		return favorites.has(favoriteKey);
+	}
 	
 	// Track which apps have been loaded (have data)
 	const loadedAppIds = $derived(new Set(qlikApps.map(a => a.id)));
@@ -794,6 +861,9 @@
 		}
 
 		isSearching = true;
+		// Clear results immediately when starting a new search to prevent stale data
+		searchResults = [];
+		unfilteredResults = [];
 		const cacheKey = getCacheKey(currentTenantUrl, currentUserId);
 
 		try {
@@ -858,9 +928,19 @@
 					const sheetState = getSheetState(item.sheetId);
 					return sheetState && selectedSheetStates.has(sheetState);
 				});
-				// Update the total count to reflect filtered results
-				totalSearchResults = results.length;
 			}
+			
+			// Apply favorites filter
+			if (showFavoritesOnly) {
+				results = results.filter(item => {
+					const favoriteKey = getFavoriteKey(item.appId, item.path);
+					return favorites.has(favoriteKey);
+				});
+			}
+			
+			// Update total count to reflect all applied filters (sheet state and favorites)
+			// This ensures the count is accurate whether filters are on or off
+			totalSearchResults = results.length;
 
 			searchResults = results;
 			unfilteredResults = searchResults;
@@ -1555,7 +1635,13 @@
 		const unsubscribe = authStore.subscribe(state => {
 			// Extract hostname from tenant URL for keying purposes
 			if (state.tenantUrl) {
+				const prevTenantUrl = currentTenantUrl;
 				currentTenantUrl = state.tenantUrl;
+				
+				// Load favorites when tenant changes
+				if (prevTenantUrl !== state.tenantUrl) {
+					loadFavorites();
+				}
 				try {
 					const url = new URL(state.tenantUrl);
 					currentTenantHostname = url.hostname;
@@ -1575,6 +1661,22 @@
 				currentTenantHostname = '';
 				// Reset auth config if logged out
 				isAuthConfigured = false;
+				favorites = new Set();
+			}
+			
+			// Update currentUserId if available
+			if (state.user?.id) {
+				const previousUserId = currentUserId;
+				currentUserId = state.user.id;
+				// Load favorites when user changes
+				if (previousUserId !== state.user.id) {
+					loadFavorites();
+				}
+			}
+			
+			// Load favorites when tenant/user is available
+			if (state.tenantUrl && state.user?.id && (currentTenantUrl !== state.tenantUrl || currentUserId !== state.user.id)) {
+				loadFavorites();
 			}
 			
 			if (state.isAuthenticated && appItems.length === 0 && !isLoadingApps) {
@@ -1591,6 +1693,7 @@
 		// Track previous values to detect actual changes
 		let previousQuery = '';
 		let previousFilterSizes = { spaces: 0, apps: 0, sheets: 0, types: 0, sheetStates: 0 };
+		let previousShowFavoritesOnly = false;
 	
 	// Effect for filter/query changes - triggers search when filters change
 	$effect(() => {
@@ -1601,6 +1704,7 @@
 		const sheetsSize = selectedSheets.size;
 		const typesSize = selectedTypes.size;
 		const sheetStatesSize = selectedSheetStates.size;
+		const favoritesOnly = showFavoritesOnly;
 		
 		// Check if query or filters actually changed
 		const queryChanged = query !== previousQuery;
@@ -1609,7 +1713,13 @@
 			appsSize !== previousFilterSizes.apps ||
 			sheetsSize !== previousFilterSizes.sheets ||
 			typesSize !== previousFilterSizes.types ||
-			sheetStatesSize !== previousFilterSizes.sheetStates;
+			sheetStatesSize !== previousFilterSizes.sheetStates ||
+			favoritesOnly !== previousShowFavoritesOnly;
+		
+		// Only trigger search if something actually changed
+		if (!queryChanged && !filtersChanged) {
+			return;
+		}
 		
 		// Reset page if query or filters changed
 		if (queryChanged || filtersChanged) {
@@ -1617,13 +1727,9 @@
 			previousQuery = query;
 		}
 		
-		// Update filter sizes
+		// Update filter sizes and favorites state BEFORE triggering search
 		previousFilterSizes = { spaces: spacesSize, apps: appsSize, sheets: sheetsSize, types: typesSize, sheetStates: sheetStatesSize };
-		
-		// Only trigger search if something actually changed
-		if (!queryChanged && !filtersChanged) {
-			return;
-		}
+		previousShowFavoritesOnly = favoritesOnly;
 		
 		if (searchEffectTimeout) {
 			clearTimeout(searchEffectTimeout);
@@ -1976,8 +2082,28 @@
 			/>
 
 			<!-- Type Filter Chips -->
-			{#if availableTypes.length > 0}
-				<div class="flex items-center gap-3 mt-3 mb-2">
+			<div class="flex items-center gap-3 mt-3 mb-2">
+				<!-- Favorites Filter -->
+				<button
+					type="button"
+					onclick={() => showFavoritesOnly = !showFavoritesOnly}
+					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border transition-all duration-150 {showFavoritesOnly ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-yellow-50 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700'} hover:opacity-80"
+				>
+					<span class="w-3.5 h-3.5 flex items-center justify-center rounded-sm {showFavoritesOnly ? '' : 'bg-yellow-200 dark:bg-yellow-800/50'}">
+						{#if showFavoritesOnly}
+							<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+								<path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+							</svg>
+						{:else}
+							<svg class="w-3 h-3 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+							</svg>
+						{/if}
+					</span>
+					Favorites
+				</button>
+				
+				{#if availableTypes.length > 0}
 					<div class="flex flex-wrap gap-2">
 						{#each availableTypes as typeName (typeName)}
 							{@const isSelected = selectedTypes.has(typeName)}
@@ -2029,8 +2155,8 @@
 							None
 						</button>
 					</div>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		
 			<div class="flex flex-col">
 				{#if isSearching && searchResults.length === 0}
@@ -2073,6 +2199,9 @@
 					onCopyToClipboard={copyToClipboard}
 					copiedDefinitionId={copiedDefinitionId}
 					tenantUrl={currentTenantUrl}
+					favorites={favorites}
+					onToggleFavorite={toggleFavorite}
+					isFavorite={isFavorite}
 					/>
 				{/if}
 			</div>
