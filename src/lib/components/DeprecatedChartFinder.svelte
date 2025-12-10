@@ -10,6 +10,7 @@
 		filterDeprecatedCharts,
 		type ChartInfo,
 	} from '$lib/utils/chart-extraction';
+	import { getAppUrl, getSheetUrl, getSpaceUrl } from '$lib/utils/url-utils';
 	import LoadingIndicator from './LoadingIndicator.svelte';
 	import { PERSONAL_SPACE_ID } from '$lib/utils/search-utils';
 
@@ -196,15 +197,6 @@
 		}
 	}
 
-	function getAppUrl(appId: string, tenantUrl: string): string {
-		const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
-		return `https://${cleanTenantUrl}/sense/app/${appId}`;
-	}
-
-	function getSheetUrl(sheetId: string, appId: string, tenantUrl: string): string {
-		const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
-		return `https://${cleanTenantUrl}/sense/app/${appId}/sheet/${sheetId}`;
-	}
 
 	const sortedCharts = $derived.by(() => {
 		if (!sortColumn) {
@@ -219,10 +211,9 @@
 		});
 	});
 
-	function getSpaceUrl(spaceId: string | undefined, tenantUrl: string): string | null {
+	function getSpaceUrlForDisplay(spaceId: string | undefined, tenantUrl: string): string | null {
 		if (!spaceId || spaceId === PERSONAL_SPACE_ID) return null;
-		const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
-		return `https://${cleanTenantUrl}/spaces/${spaceId}`;
+		return getSpaceUrl(spaceId, tenantUrl);
 	}
 
 	onMount(() => {
@@ -408,7 +399,7 @@
 						{#each sortedCharts as chart}
 							{@const authState = get(authStore)}
 							{@const tenantUrl = authState.tenantUrl || ''}
-							{@const spaceUrl = getSpaceUrl(chart.spaceId, tenantUrl)}
+							{@const spaceUrl = getSpaceUrlForDisplay(chart.spaceId, tenantUrl)}
 							{@const appUrl = getAppUrl(chart.appId, tenantUrl)}
 							{@const sheetUrl = getSheetUrl(chart.sheetId, chart.appId, tenantUrl)}
 							{@const spaceCopyId = `space-${chart.chartId}`}

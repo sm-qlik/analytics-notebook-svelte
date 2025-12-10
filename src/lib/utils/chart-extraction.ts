@@ -3,6 +3,7 @@
  */
 
 import { extractChartTitle } from './data-extraction';
+import { getSheetUrl } from './url-utils';
 
 export interface ChartInfo {
 	chartId: string;
@@ -95,15 +96,12 @@ export function extractChartsFromAppStructure(
 	const sheets = structureData.sheets || [];
 	const seenChartIds = new Set<string>();
 
-	// Ensure tenantUrl doesn't already have https://
-	const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
-
 	sheets.forEach((sheet: any) => {
 		const sheetId = sheet?.qProperty?.qInfo?.qId;
 		const sheetTitle = sheet?.qProperty?.qMetaDef?.title;
 		if (!sheetId || !sheetTitle) return;
 
-		const sheetUrl = `https://${cleanTenantUrl}/sense/app/${appId}/sheet/${sheetId}`;
+		const sheetUrl = getSheetUrl(sheetId, appId, tenantUrl);
 		const sheetInfo = {
 			sheetId,
 			sheetTitle,

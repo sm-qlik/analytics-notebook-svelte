@@ -5,6 +5,7 @@
  */
 
 import { extractChartTitle } from './data-extraction';
+import { getSheetUrl } from './url-utils';
 
 // JSONPath implementation (simplified version)
 function jsonPath(obj: any, path: string, callback?: (value: any) => void): any[] {
@@ -215,9 +216,7 @@ export class EngineInterface {
 				const sheetTitle = sheetProps.qProperty.qMetaDef.title;
 				sheetProps.published = !!sheetLayout?.qMeta?.published;
 				sheetProps.approved = !!sheetLayout?.qMeta?.approved;
-				// Ensure tenantUrl doesn't already have https://
-				const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
-				const sheetUrl = `https://${cleanTenantUrl}/sense/app/${appId}/sheet/${sheetId}`;
+				const sheetUrl = getSheetUrl(sheetId, appId, tenantUrl);
 				const sheetInfo = {
 					sheetId,
 					sheetTitle,

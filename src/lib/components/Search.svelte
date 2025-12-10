@@ -409,8 +409,13 @@
 		return searchItems.length;
 	}
 
+	// Track if a search is currently in progress to prevent race conditions
+	let isSearchInProgress = false;
+	let pendingSearchRequest = false;
+
 	/**
 	 * Perform search using IndexedDB - much more memory efficient for large datasets
+	 * This function is debounced and prevents concurrent searches to avoid juddering
 	 */
 	async function performIndexedDBSearch(): Promise<void> {
 		if (!currentTenantUrl || !currentUserId) {
@@ -418,6 +423,13 @@
 			return;
 		}
 
+		// If a search is already in progress, mark that we need another one
+		if (isSearchInProgress) {
+			pendingSearchRequest = true;
+			return;
+		}
+
+		isSearchInProgress = true;
 		isSearching = true;
 		const cacheKey = getCacheKey(currentTenantUrl, currentUserId);
 
@@ -464,6 +476,16 @@
 			searchResults = [];
 		} finally {
 			isSearching = false;
+			isSearchInProgress = false;
+			
+			// If another search was requested while we were searching, perform it now
+			if (pendingSearchRequest) {
+				pendingSearchRequest = false;
+				// Use a small delay to batch rapid updates and prevent juddering
+				setTimeout(() => {
+					performIndexedDBSearch();
+				}, 50);
+			}
 		}
 	}
 
@@ -967,12 +989,8 @@
 					
 					await processSheets(structureData, appName, appId);
 					
-					// Trigger search
-					if (qlikApps.length > 0) {
-						untrack(() => {
-							performIndexedDBSearch();
-						});
-					}
+					// Don't trigger search here - let the loading completion effect handle it
+					// This prevents multiple rapid searches during batch loading
 					return 'loaded';
 				} catch (err: any) {
 					console.warn(`Failed to load app ${appName}:`, err);
@@ -1307,7 +1325,10 @@
 				});
 			} else {
 				// No changes detected, just refresh the search to show current results
-				await performIndexedDBSearch();
+				// Use a small delay to ensure any in-progress searches complete first
+				setTimeout(() => {
+					performIndexedDBSearch();
+				}, 50);
 			}
 			
 		} catch (err: any) {
@@ -1463,6 +1484,17 @@
 	
 	// Track previous loading state to detect completion
 	let previousLoadingState = false;
+	let loadingCompletionTimeout: ReturnType<typeof setTimeout> | null = null;
+	
+	// Consolidated function to refresh the table and update state
+	function refreshTableInternal() {
+		lastRefreshedAppsCount = qlikApps.length;
+		hasNewDataPending = false;
+		loadingProgressStore.setProgress({
+			hasNewData: false
+		});
+		performIndexedDBSearch();
+	}
 	
 	// Effect to track when new data is available and loading completes
 	$effect(() => {
@@ -1480,25 +1512,35 @@
 		// Only trigger search when loading transitions from true to false (completion)
 		// This prevents loops during loading
 		if (previousLoadingState && !loading && hasNewDataPending && qlikApps.length > 0) {
-			// Loading just completed - auto-refresh the table
-			hasNewDataPending = false;
-			lastRefreshedAppsCount = qlikApps.length;
-			loadingProgressStore.setProgress({
-				hasNewData: false
-			});
-			performIndexedDBSearch();
+			// Clear any pending timeout
+			if (loadingCompletionTimeout) {
+				clearTimeout(loadingCompletionTimeout);
+			}
+			
+			// Debounce the refresh to prevent juddering when multiple apps finish loading rapidly
+			loadingCompletionTimeout = setTimeout(() => {
+				refreshTableInternal();
+				loadingCompletionTimeout = null;
+			}, 100); // Small delay to batch rapid updates
 		}
 		
 		previousLoadingState = loading;
+		
+		return () => {
+			if (loadingCompletionTimeout) {
+				clearTimeout(loadingCompletionTimeout);
+				loadingCompletionTimeout = null;
+			}
+		};
 	});
 	
 	function refreshTable() {
-		lastRefreshedAppsCount = qlikApps.length;
-		hasNewDataPending = false;
-		loadingProgressStore.setProgress({
-			hasNewData: false
-		});
-		performIndexedDBSearch();
+		// Clear any pending timeout and refresh immediately
+		if (loadingCompletionTimeout) {
+			clearTimeout(loadingCompletionTimeout);
+			loadingCompletionTimeout = null;
+		}
+		refreshTableInternal();
 	}
 	
 	// Set callbacks in store for header to use

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as XLSX from 'xlsx';
 	import { getColumnValue, type SortableColumn, type SearchResult } from '$lib/utils/table-columns';
+	import { getAppUrl as buildAppUrl } from '$lib/utils/url-utils';
 
 	// SearchResult and SortableColumn types imported from utils/table-columns
 
@@ -129,8 +130,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 
 	function getAppUrl(appId: string | undefined): string | null {
 		if (!tenantUrl || !appId) return null;
-		const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
-		return `https://${cleanTenantUrl}/sense/app/${appId}`;
+		return buildAppUrl(appId, tenantUrl);
 	}
 
 	function getCopyId(result: SearchResult, field: string): string {
