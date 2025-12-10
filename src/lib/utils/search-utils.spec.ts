@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSheetDimensionIndexItem } from './search-utils';
+import { createSheetDimensionIndexItem, createSheetMeasureIndexItem } from './search-utils';
 
 describe('createSheetDimensionIndexItem', () => {
   it('builds a proper SearchIndexItem for a sheet dimension', () => {
@@ -272,3 +272,286 @@ describe('createSheetDimensionIndexItem', () => {
     expect(item.searchText).toContain('Access Evaluation');
   });   
 });
+
+describe('createSheetMeasureIndexItem', () => {
+  it('builds a proper SearchIndexItem for a sheet measure', () => {
+    const cacheKey = 'tenant:user';
+    const appId = 'app-123';
+    const appName = 'My App';
+    const spaceId = 'space-1';
+    const idx = 1;
+    const getSheetStatus = (sheetId: string) => ({ approved: sheetId === 'sheet-xyz', published: true });
+    const measure = {
+      sheetId: 'sheet-xyz',
+      sheetTitle: 'Profit Overview',
+      sheetUrl: 'https://tenant/app/app-123/sheet/sheet-xyz',
+      chartId: 'chart-456',
+      chartTitle: 'Profit by Product',
+      chartUrl: 'https://tenant/app/app-123/sheet/sheet-xyz/chart/chart-456',
+      qDef: 'sum(Profit)',
+      title: 'Sheet Measure Title'
+    };
+
+    const item = createSheetMeasureIndexItem(cacheKey, appId, appName, spaceId, measure, idx, getSheetStatus);
+
+    expect(item.objectType).toBe('Sheet Measure');
+    expect(item.path).toBe('sheetMeasures[1].qDef');
+    expect(item.id).toBe(`${cacheKey}:${appId}:sheetMeasures[1].qDef`);
+    expect(item.appId).toBe(appId);
+    expect(item.appName).toBe(appName);
+    expect(item.spaceId).toBe(spaceId);
+    expect(item.sheetId).toBe('sheet-xyz');
+    expect(item.sheetName).toBe('Profit Overview');
+    expect(item.sheetUrl).toBe('https://tenant/app/app-123/sheet/sheet-xyz');
+    expect(item.sheetApproved).toBe(true);
+    expect(item.sheetPublished).toBe(true);
+    expect(item.title).toBe('');
+    expect(item.name).toEqual([]);
+    expect(item.nameText).toBe('');
+    expect(item.definition).toBe('sum(Profit)');
+    expect(item.chartId).toBe('chart-456');
+    expect(item.chartTitle).toBe('Profit by Product');
+    expect(item.chartUrl).toBe('https://tenant/app/app-123/sheet/sheet-xyz/chart/chart-456');
+    expect(item.searchText).toContain('Profit by Product');
+    expect(item.searchText).toContain('sum(Profit)');
+    expect(item.searchText).toContain('Profit Overview');
+    expect(item.searchText).toContain('Profit by Product');
+  });
+
+  it('builds a proper SearchIndexItem for a live master measure reference', () => {
+    const cacheKey = 'tenant:user';
+    const appId = 'app-123';
+    const appName = 'My App';
+    const spaceId = 'space-1';
+    const idx = 1;
+    const getSheetStatus = (sheetId: string) => ({ approved: true, published: true });
+    const measure = {
+    "sheetId": "5179f882-d67d-4e28-a7ef-049fe04de93e",
+    "sheetTitle": "HeatMap activity",
+    "sheetUrl": "https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/5179f882-d67d-4e28-a7ef-049fe04de93e",
+    "chartId": "YqAp",
+    "chartType": "pivot-table",
+    "chartTitle": "When users are active?",
+    "chartUrl": "https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/5179f882-d67d-4e28-a7ef-049fe04de93e/chartId/YqAp",
+    "qLibraryId": "ePUVWf"
+};
+
+    const item = createSheetMeasureIndexItem(cacheKey, appId, appName, spaceId, measure, idx, getSheetStatus);
+
+    expect(item.objectType).toBe('Sheet Measure');
+    expect(item.path).toBe('sheetMeasures[1].qDef');
+    expect(item.id).toBe(`${cacheKey}:${appId}:sheetMeasures[1].qDef`);
+    expect(item.appId).toBe(appId);
+    expect(item.appName).toBe(appName);
+    expect(item.spaceId).toBe(spaceId);
+    expect(item.sheetId).toBe('5179f882-d67d-4e28-a7ef-049fe04de93e');
+    expect(item.sheetName).toBe('HeatMap activity');
+    expect(item.sheetUrl).toBe('https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/5179f882-d67d-4e28-a7ef-049fe04de93e');
+    expect(item.sheetApproved).toBe(true);
+    expect(item.sheetPublished).toBe(true);
+    expect(item.title).toBe('');
+    expect(item.name).toEqual([]);
+    expect(item.nameText).toBe('');
+    expect(item.definition).toBe('');
+    expect(item.chartId).toBe('YqAp');
+    expect(item.chartTitle).toBe('When users are active?');
+    expect(item.chartUrl).toBe('https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/5179f882-d67d-4e28-a7ef-049fe04de93e/chartId/YqAp');
+    expect(item.searchText).toContain('HeatMap activity');
+    expect(item.searchText).toContain('When users are active');
+  }); 
+  
+  it('builds a proper SearchIndexItem for a live sheet measure', () => {
+    const cacheKey = 'tenant:user';
+    const appId = 'app-123';
+    const appName = 'My App';
+    const spaceId = 'space-1';
+    const idx = 1;
+    const getSheetStatus = (sheetId: string) => ({ approved: true, published: true });
+    const measure = {
+        "sheetId": "bcf03f5b-3b98-402d-81e9-ba86cf8ff46d",
+        "sheetTitle": "App Follow Up",
+        "sheetUrl": "https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/bcf03f5b-3b98-402d-81e9-ba86cf8ff46d",
+        "chartId": "RXPRbU",
+        "chartType": "table",
+        "chartTitle": null,
+        "chartUrl": "https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/bcf03f5b-3b98-402d-81e9-ba86cf8ff46d/chartId/RXPRbU",
+        "qLibraryId": "",
+        "qDef": {
+            "qLabel": "Deletor",
+            "qDescription": "",
+            "qTags": [],
+            "qGrouping": "N",
+            "qDef": "=MaxString({$<eventType={'com.qlik.app.deleted'}>}  [Users email])",
+            "qNumFormat": {
+                "qType": "U",
+                "qnDec": 10,
+                "qUseThou": 0,
+                "qFmt": "",
+                "qDec": "",
+                "qThou": ""
+            },
+            "qRelative": false,
+            "qBrutalSum": false,
+            "qAggrFunc": "Expr",
+            "qAccumulate": 0,
+            "qReverseSort": false,
+            "qActiveExpression": 0,
+            "qExpressions": [],
+            "qLabelExpression": "",
+            "autoSort": true,
+            "cId": "JgpEDc",
+            "numFormatFromTemplate": true,
+            "textAlign": {
+                "auto": true,
+                "align": "left"
+            },
+            "representation": {
+                "type": "text",
+                "indicator": {
+                    "showTextValues": true,
+                    "applySegmentColors": false,
+                    "position": "right"
+                },
+                "miniChart": {
+                    "type": "sparkline",
+                    "colors": {
+                        "main": {
+                            "index": 6
+                        },
+                        "max": {
+                            "index": 0,
+                            "color": "none"
+                        },
+                        "min": {
+                            "index": 0,
+                            "color": "none"
+                        },
+                        "first": {
+                            "index": 0,
+                            "color": "none"
+                        },
+                        "last": {
+                            "index": 0,
+                            "color": "none"
+                        },
+                        "positive": {
+                            "index": 6
+                        },
+                        "negative": {
+                            "index": 10,
+                            "color": "#f93f17"
+                        }
+                    },
+                    "showDots": true,
+                    "yAxis": {
+                        "scale": "local",
+                        "position": "auto"
+                    }
+                }
+            },
+            "conditionalColoring": {
+                "segments": {
+                    "limits": [],
+                    "paletteColors": [
+                        {
+                            "index": 6,
+                            "icon": "dot"
+                        }
+                    ]
+                }
+            }
+        },
+        "qSortBy": {
+            "qSortByState": 0,
+            "qSortByFrequency": 0,
+            "qSortByNumeric": -1,
+            "qSortByAscii": 0,
+            "qSortByLoadOrder": 1,
+            "qSortByExpression": 0,
+            "qExpression": {
+                "qv": ""
+            },
+            "qSortByGreyness": 0
+        },
+        "qAttributeExpressions": [],
+        "qAttributeDimensions": [],
+        "qCalcCond": {
+            "qv": ""
+        },
+        "qCalcCondition": {
+            "qCond": {
+                "qv": ""
+            },
+            "qMsg": {
+                "qv": ""
+            }
+        },
+        "qTrendLines": [],
+        "qMiniChartDef": {
+            "qDef": "",
+            "qLibraryId": "",
+            "qSortBy": {
+                "qSortByState": 0,
+                "qSortByFrequency": 0,
+                "qSortByNumeric": 0,
+                "qSortByAscii": 0,
+                "qSortByLoadOrder": 0,
+                "qSortByExpression": 0,
+                "qExpression": {
+                    "qv": ""
+                },
+                "qSortByGreyness": 0
+            },
+            "qOtherTotalSpec": {
+                "qOtherMode": "OTHER_OFF",
+                "qOtherCounted": {
+                    "qv": ""
+                },
+                "qOtherLimit": {
+                    "qv": ""
+                },
+                "qOtherLimitMode": "OTHER_GT_LIMIT",
+                "qSuppressOther": true,
+                "qForceBadValueKeeping": true,
+                "qApplyEvenWhenPossiblyWrongResult": true,
+                "qGlobalOtherGrouping": false,
+                "qOtherCollapseInnerDimensions": false,
+                "qOtherSortMode": "OTHER_SORT_DESCENDING",
+                "qTotalMode": "TOTAL_OFF",
+                "qReferencedExpression": {
+                    "qv": ""
+                }
+            },
+            "qMaxNumberPoints": -1,
+            "qAttributeExpressions": [],
+            "qNullSuppression": true
+        }
+    };
+
+    const item = createSheetMeasureIndexItem(cacheKey, appId, appName, spaceId, measure, idx, getSheetStatus);
+
+    expect(item.objectType).toBe('Sheet Measure');
+    expect(item.path).toBe('sheetMeasures[1].qDef');
+    expect(item.id).toBe(`${cacheKey}:${appId}:sheetMeasures[1].qDef`);
+    expect(item.appId).toBe(appId);
+    expect(item.appName).toBe(appName);
+    expect(item.spaceId).toBe(spaceId);
+    expect(item.sheetId).toBe('bcf03f5b-3b98-402d-81e9-ba86cf8ff46d');
+    expect(item.sheetName).toBe('App Follow Up');
+    expect(item.sheetUrl).toBe('https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/bcf03f5b-3b98-402d-81e9-ba86cf8ff46d');
+    expect(item.sheetApproved).toBe(true);
+    expect(item.sheetPublished).toBe(true);
+    expect(item.title).toBe('Deletor');
+    expect(item.name).toEqual(['Deletor']);
+    expect(item.nameText).toBe('Deletor');
+    expect(item.definition).toBe("=MaxString({$<eventType={'com.qlik.app.deleted'}>}  [Users email])");
+    expect(item.chartId).toBe('RXPRbU');
+    expect(item.chartTitle).toBe('');
+    expect(item.chartUrl).toBe('https://services.eu.qlikcloud.com//sense/app/ee0f43e9-1506-45e1-91ff-9a8b7703f7fa/sheet/bcf03f5b-3b98-402d-81e9-ba86cf8ff46d/chartId/RXPRbU');
+    expect(item.searchText).toContain('Deletor');
+    expect(item.searchText).toContain('com.qlik.app.deleted');
+    expect(item.searchText).toContain('email');
+    expect(item.searchText).toContain('App Follow Up');
+  });  
+});
+

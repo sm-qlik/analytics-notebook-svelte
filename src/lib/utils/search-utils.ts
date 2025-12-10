@@ -307,7 +307,7 @@ export function createSheetMeasureIndexItem(
 		: (extractChartTitle(measure) || '');
 	const chartUrl = measure.chartUrl || '';
 	const definition = safeExtractQDef(measure.qDef) || safeExtractQDef(measure);
-	const title = measure.title || '';
+	const title = measure.qDef?.qLabel || measure.qDef?.qLabelExpression || '';
 	const sheetStatus = getSheetStatus(sheetId);
 
 	return {
@@ -322,9 +322,9 @@ export function createSheetMeasureIndexItem(
 		sheetApproved: sheetStatus.approved,
 		sheetPublished: sheetStatus.published,
 		objectType: 'Sheet Measure',
-		title: typeof title === 'string' ? title : '',
-		name: [],
-		nameText: '',
+		title,
+		name: title ? [title] : [],
+		nameText: title,
 		searchText: `${title} ${definition} ${sheetName} ${chartTitle}`.trim(),
 		definition,
 		chartId,
