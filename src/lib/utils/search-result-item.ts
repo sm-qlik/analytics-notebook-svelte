@@ -13,7 +13,7 @@ export interface SearchResultItem {
   chartId?: string | null;
   chartTitle?: string | null;
   chartUrl?: string | null;
-  labels?: string[];
+  name?: string[];
 }
 
 // Optional convenience class for constructing items with defaults
@@ -32,7 +32,7 @@ export class SearchResultItemImpl implements SearchResultItem {
   chartId?: string | null;
   chartTitle?: string | null;
   chartUrl?: string | null;
-  labels?: string[];
+  name?: string[];
 
   constructor(init: Partial<SearchResultItem> & Pick<SearchResultItem, 'path' | 'object' | 'objectType' | 'context' | 'appId'>) {
     this.path = init.path;
@@ -49,6 +49,6 @@ export class SearchResultItemImpl implements SearchResultItem {
     this.chartId = init.chartId ?? null;
     this.chartTitle = init.chartTitle ?? null;
     this.chartUrl = init.chartUrl ?? null;
-    this.labels = init.labels ?? [];
+    this.name = init.name ?? [];
   }
 }

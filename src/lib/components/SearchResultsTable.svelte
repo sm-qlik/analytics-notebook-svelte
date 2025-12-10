@@ -370,12 +370,12 @@
 					  </th>
 					  <th 
 						class="w-[13%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
-						onclick={() => toggleSort('labels')}
+						onclick={() => toggleSort('name')}
 						title="Click to sort"
 					  >
 						<div class="flex items-center gap-1">
-							Labels
-							{#if sortColumn === 'labels'}
+							Name
+							{#if sortColumn === 'name'}
 								{#if sortDirection === 'asc'}
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
@@ -495,10 +495,11 @@
 					{@const obj = result.object}
 					{@const title = (() => {
 						if (!obj) return 'N/A';
-						// Try title
-						if (obj.title) {
-							if (typeof obj.title === 'string') return obj.title;
+						// Try title - check for non-empty string
+						if (obj.title !== undefined && obj.title !== null) {
+							if (typeof obj.title === 'string' && obj.title.trim()) return obj.title.trim();
 							if (typeof obj.title === 'object' && obj.title.qv) return String(obj.title.qv);
+							if (typeof obj.title === 'string') return obj.title; // Even if empty, return it
 							return String(obj.title);
 						}
 						// Try qAlias
@@ -570,10 +571,11 @@
 					{@const sheetUrl = result.sheetUrl || result.context?.sheetUrl || null}
 					{@const chartId = result.chartId || obj?.qInfo?.qId || null}
 					{@const chartTitle = result.chartTitle || result.context?.chartTitle || null}
-					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null}
-					{@const labels = result.labels || []}
+					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null
 					{@const appId = result.appId || ''}
 					{@const isFavorited = isFavorite(appId, result.path)}
+					{@const name = result.name || []}
+
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 							<td class="px-2 py-4 text-center">
 								<button
@@ -596,11 +598,11 @@
 							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1">
-										{#if labels.length > 0}
+										{#if name.length > 0}
 											<div class="flex flex-wrap gap-1">
-												{#each labels as label}
-													<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 {shouldHighlightText(label, debouncedQuery) ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : ''}" title={label}>
-														{@html highlightText(label, debouncedQuery)}
+												{#each name as nameItem}
+													<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 {shouldHighlightText(nameItem, debouncedQuery) ? 'ring-2 ring-yellow-400 dark:ring-yellow-600' : ''}" title={nameItem}>
+														{@html highlightText(nameItem, debouncedQuery)}
 													</span>
 												{/each}
 											</div>
@@ -608,14 +610,14 @@
 											<span class="text-gray-400">N/A</span>
 										{/if}
 									</div>
-									{#if labels.length > 0}
+									{#if name.length > 0}
 										<button
 											type="button"
-											onclick={() => onCopyToClipboard(labels.join(', '), getCopyId(result, 'labels'))}
+											onclick={() => onCopyToClipboard(name.join(', '), getCopyId(result, 'name'))}
 											class="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors mt-0.5 opacity-0 group-hover:opacity-100"
-											title="Copy labels to clipboard"
+											title="Copy name to clipboard"
 										>
-											{#if copiedDefinitionId === getCopyId(result, 'labels')}
+											{#if copiedDefinitionId === getCopyId(result, 'name')}
 												<svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 												</svg>
