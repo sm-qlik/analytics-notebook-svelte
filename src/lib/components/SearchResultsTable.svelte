@@ -614,22 +614,39 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 										{/if}
 									</div>
 									{#if name.length > 0}
-										<button
-											type="button"
-											onclick={() => onCopyToClipboard(name.join(', '), getCopyId(result, 'name'))}
-											class="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors mt-0.5 opacity-0 group-hover:opacity-100"
-											title="Copy name to clipboard"
-										>
-											{#if copiedDefinitionId === getCopyId(result, 'name')}
-												<svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+										<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
+											<button
+												type="button"
+												onclick={() => onCopyToClipboard(name.join(', '), getCopyId(result, 'name'))}
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Copy name to clipboard"
+											>
+												{#if copiedDefinitionId === getCopyId(result, 'name')}
+													<svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+													</svg>
+												{:else}
+													<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+													</svg>
+												{/if}
+											</button>
+											<button
+												type="button"
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Search for name"
+												onclick={() => onSearchWithQuery(name.join(', '))}
+											>
+												<svg
+													class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+												>
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
 												</svg>
-											{:else}
-												<svg class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-												</svg>
-											{/if}
-										</button>
+											</button>
+										</div>
 									{/if}
 								</div>
 							</td>
@@ -639,7 +656,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 										{@html highlightText(definition, debouncedQuery)}
 									</div>
 									{#if definition !== 'N/A'}
-										<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+										<div class="flex flex-col items-end gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
 											<button
 												type="button"
 												onclick={() => onCopyToClipboard(definition, getCopyId(result, 'definition'))}
@@ -676,7 +693,6 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 													</svg>
 												{/if}
 											</button>
-											<!-- Placeholder search icon (not hooked up yet) -->
 											<button
 												type="button"
 												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
@@ -712,7 +728,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 											<span class="text-gray-400">N/A</span>
 										{/if}
 									</div>
-									<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+									<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
 										{#if chartTitle}
 											<button
 												type="button"
@@ -729,6 +745,21 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
 													</svg>
 												{/if}
+											</button>
+											<button
+												type="button"
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Search for chart title"
+												onclick={() => onSearchWithQuery(chartTitle || '')}
+											>
+												<svg
+													class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+												>
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
+												</svg>
 											</button>
 										{/if}
 										{#if chartUrl && chartTitle}
@@ -762,7 +793,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 											</div>
 										{/if}
 									</div>
-									<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+									<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
 										<button
 											type="button"
 											onclick={() => onCopyToClipboard(result.app || '', getCopyId(result, 'app'))}
@@ -778,6 +809,21 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
 												</svg>
 											{/if}
+										</button>
+										<button
+											type="button"
+											class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+											title="Search for app name"
+											onclick={() => onSearchWithQuery(result.app || '')}
+										>
+											<svg
+												class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
+											</svg>
 										</button>
 										{#if getAppUrl(result.appId)}
 											<a
@@ -807,7 +853,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 										</div>
 									{/if}
 								</div>
-								<div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+								<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
 									{#if sheetName && sheetName !== 'N/A'}
 										<button
 											type="button"
@@ -824,6 +870,21 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
 												</svg>
 											{/if}
+										</button>
+										<button
+											type="button"
+											class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+											title="Search for sheet name"
+											onclick={() => onSearchWithQuery(sheetName)}
+										>
+											<svg
+												class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
+											</svg>
 										</button>
 									{/if}
 									{#if sheetUrl && sheetName !== 'N/A'}
