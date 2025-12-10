@@ -827,7 +827,7 @@
 				
 				try {
 					// Open app session without loading data
-					session = await qix.openAppSession({ appId, withoutData: true });
+					session = await qix.openAppSession({ appId, withoutData: true, identity: 'analyticsnotebook' });
 					
 					// Get the app document from the session
 					const app = await session.getDoc();
@@ -985,7 +985,7 @@
 			};
 			
 			// Open app session without loading data
-			session = await qix.openAppSession({ appId, withoutData: true });
+			session = await qix.openAppSession({ appId, withoutData: true, identity: 'analyticsnotebook' });
 			
 			// Get the app document from the session
 			const app = await session.getDoc();
