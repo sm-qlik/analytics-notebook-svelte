@@ -4,13 +4,12 @@
 	import { loadQlikAPI, configureQlikAuthOnce, resetAuthConfiguration } from '$lib/utils/qlik-auth';
 	import { EngineInterface } from '$lib/utils/engine-interface';
 	import { appCache, getCacheKey, type AppItem, type CachedAppData, type SearchIndexItem, type SearchFilters } from '$lib/stores/app-cache';
+	import { loadingProgressStore } from '$lib/stores/loading-progress';
 	import * as XLSX from 'xlsx';
 	import FilterSidebar from './FilterSidebar.svelte';
 	import SearchInput from './SearchInput.svelte';
 	import SearchResultsTable from './SearchResultsTable.svelte';
 	import type { SearchResultItem } from '$lib/utils/search-result-item';
-	import LoadingIndicator from './LoadingIndicator.svelte';
-	import CompletionIndicator from './CompletionIndicator.svelte';
 	import {
 		extractSheetMetadata,
 		extractSheetObjects
@@ -67,7 +66,6 @@
 	let failedAppsCount = $state(0); // Track how many apps failed to load
 	let pendingAppsToLoad = $state<AppItem[]>([]); // Apps waiting to be loaded (paused due to space filter)
 	let isLoadingPaused = $state(false); // Track if loading is paused due to space filter
-	let isLoadingDismissed = $state(false); // Track if loading indicator was dismissed by user
 	// Pagination is now handled in SearchResultsTable component
 	const totalPages = $derived(Math.ceil(searchResults.length / 20));
 	
@@ -411,8 +409,13 @@
 		return searchItems.length;
 	}
 
+	// Track if a search is currently in progress to prevent race conditions
+	let isSearchInProgress = false;
+	let pendingSearchRequest = false;
+
 	/**
 	 * Perform search using IndexedDB - much more memory efficient for large datasets
+	 * This function is debounced and prevents concurrent searches to avoid juddering
 	 */
 	async function performIndexedDBSearch(): Promise<void> {
 		if (!currentTenantUrl || !currentUserId) {
@@ -420,6 +423,13 @@
 			return;
 		}
 
+		// If a search is already in progress, mark that we need another one
+		if (isSearchInProgress) {
+			pendingSearchRequest = true;
+			return;
+		}
+
+		isSearchInProgress = true;
 		isSearching = true;
 		const cacheKey = getCacheKey(currentTenantUrl, currentUserId);
 
@@ -466,6 +476,16 @@
 			searchResults = [];
 		} finally {
 			isSearching = false;
+			isSearchInProgress = false;
+			
+			// If another search was requested while we were searching, perform it now
+			if (pendingSearchRequest) {
+				pendingSearchRequest = false;
+				// Use a small delay to batch rapid updates and prevent juddering
+				setTimeout(() => {
+					performIndexedDBSearch();
+				}, 50);
+			}
 		}
 	}
 
@@ -702,6 +722,12 @@
 						spaceId: cached.spaceId
 					}));
 					cacheLoadedAppsCount = unchangedMetadata.length;
+					loadingProgressStore.setProgress({
+						cachedCount: cacheLoadedAppsCount,
+						current: qlikApps.length,
+						total: allApps.length,
+						appItemsCount: allApps.length
+					});
 					
 					// Check if search index already exists and has all the apps we need
 					const indexedAppIds = await appCache.getIndexedAppIds(tenantUrl, userId);
@@ -821,8 +847,16 @@
 		
 		isLoadingAppData = true;
 		isLoadingPaused = false;
-		isLoadingDismissed = false;
 		loadingProgress = { current: qlikApps.length, total: appItems.length, currentApp: '' };
+		loadingProgressStore.setProgress({
+			isLoading: true,
+			current: qlikApps.length,
+			total: appItems.length,
+			currentApp: '',
+			appItemsCount: appItems.length,
+			isPaused: false,
+			pendingCount: pendingAppsToLoad.length
+		});
 		
 		// Store initial appItems length to detect if state was cleared
 		const initialAppItemsLength = appItems.length;
@@ -860,6 +894,13 @@
 			if (appsToLoad.length === 0) {
 				isLoadingAppData = false;
 				loadingProgress = { current: appItems.length, total: appItems.length, currentApp: '' };
+				loadingProgressStore.setProgress({
+					isLoading: false,
+					current: appItems.length,
+					total: appItems.length,
+					currentApp: '',
+					appItemsCount: appItems.length
+				});
 				
 				// Update cache metadata even if nothing to load
 				if (tenantUrl && currentUserId) {
@@ -897,6 +938,12 @@
 					total: appItems.length, 
 					currentApp: appName 
 				};
+				loadingProgressStore.setProgress({
+					current: qlikApps.length,
+					total: appItems.length,
+					currentApp: appName,
+					appItemsCount: appItems.length
+				});
 				
 				let session: any = null;
 				
@@ -942,12 +989,8 @@
 					
 					await processSheets(structureData, appName, appId);
 					
-					// Trigger search
-					if (qlikApps.length > 0) {
-						untrack(() => {
-							performIndexedDBSearch();
-						});
-					}
+					// Don't trigger search here - let the loading completion effect handle it
+					// This prevents multiple rapid searches during batch loading
 					return 'loaded';
 				} catch (err: any) {
 					console.warn(`Failed to load app ${appName}:`, err);
@@ -969,6 +1012,12 @@
 						total: appItems.length, 
 						currentApp: '' 
 					};
+					loadingProgressStore.setProgress({
+						current: qlikApps.length,
+						total: appItems.length,
+						currentApp: '',
+						appItemsCount: appItems.length
+					});
 				}
 			}
 			
@@ -992,6 +1041,9 @@
 				const batchFailed = results.filter(r => r === 'error').length;
 				if (batchFailed > 0) {
 					failedAppsCount += batchFailed;
+					loadingProgressStore.setProgress({
+						failedCount: failedAppsCount
+					});
 				}
 				
 				// Check if all remaining apps are being skipped due to space filter
@@ -1010,6 +1062,10 @@
 						// All remaining apps are filtered out - add them to pending and pause
 						pendingAppsToLoad = [...pendingAppsToLoad, ...unloadedRemaining];
 						isLoadingPaused = true;
+						loadingProgressStore.setProgress({
+							isPaused: true,
+							pendingCount: pendingAppsToLoad.length
+						});
 						console.log(`Loading paused: ${pendingAppsToLoad.length} apps waiting for space filter to change`);
 						break;
 					}
@@ -1032,6 +1088,15 @@
 				total: appItems.length, 
 				currentApp: '' 
 			};
+			loadingProgressStore.setProgress({
+				isLoading: false,
+				current: qlikApps.length,
+				total: appItems.length,
+				currentApp: '',
+				appItemsCount: appItems.length,
+				failedCount: failedAppsCount,
+				cachedCount: cacheLoadedAppsCount
+			});
 		}
 	}
 	
@@ -1058,6 +1123,12 @@
 				total: appItems.length, 
 				currentApp: appName 
 			};
+			loadingProgressStore.setProgress({
+				current: qlikApps.length,
+				total: appItems.length,
+				currentApp: appName,
+				appItemsCount: appItems.length
+			});
 			
 			// Open app session without loading data
 			session = await qix.openAppSession({ appId, withoutData: true, identity: 'analyticsnotebook' });
@@ -1118,6 +1189,12 @@
 				total: appItems.length, 
 				currentApp: '' 
 			};
+			loadingProgressStore.setProgress({
+				current: qlikApps.length,
+				total: appItems.length,
+				currentApp: '',
+				appItemsCount: appItems.length
+			});
 		}
 	}
 	
@@ -1146,7 +1223,7 @@
 		failedAppsCount = 0;
 		pendingAppsToLoad = [];
 		isLoadingPaused = false;
-		isLoadingDismissed = false;
+		loadingProgressStore.reset();
 		currentPage = 1;
 		availableTypes = [];
 		availableTypesCacheKey = null;
@@ -1248,7 +1325,10 @@
 				});
 			} else {
 				// No changes detected, just refresh the search to show current results
-				await performIndexedDBSearch();
+				// Use a small delay to ensure any in-progress searches complete first
+				setTimeout(() => {
+					performIndexedDBSearch();
+				}, 50);
 			}
 			
 		} catch (err: any) {
@@ -1404,6 +1484,17 @@
 	
 	// Track previous loading state to detect completion
 	let previousLoadingState = false;
+	let loadingCompletionTimeout: ReturnType<typeof setTimeout> | null = null;
+	
+	// Consolidated function to refresh the table and update state
+	function refreshTableInternal() {
+		lastRefreshedAppsCount = qlikApps.length;
+		hasNewDataPending = false;
+		loadingProgressStore.setProgress({
+			hasNewData: false
+		});
+		performIndexedDBSearch();
+	}
 	
 	// Effect to track when new data is available and loading completes
 	$effect(() => {
@@ -1413,25 +1504,59 @@
 		// Track when apps are added
 		if (currentAppsCount > lastRefreshedAppsCount) {
 			hasNewDataPending = true;
+			loadingProgressStore.setProgress({
+				hasNewData: true
+			});
 		}
 		
 		// Only trigger search when loading transitions from true to false (completion)
 		// This prevents loops during loading
 		if (previousLoadingState && !loading && hasNewDataPending && qlikApps.length > 0) {
-			// Loading just completed - auto-refresh the table
-			hasNewDataPending = false;
-			lastRefreshedAppsCount = qlikApps.length;
-			performIndexedDBSearch();
+			// Clear any pending timeout
+			if (loadingCompletionTimeout) {
+				clearTimeout(loadingCompletionTimeout);
+			}
+			
+			// Debounce the refresh to prevent juddering when multiple apps finish loading rapidly
+			loadingCompletionTimeout = setTimeout(() => {
+				refreshTableInternal();
+				loadingCompletionTimeout = null;
+			}, 100); // Small delay to batch rapid updates
 		}
 		
 		previousLoadingState = loading;
+		
+		return () => {
+			if (loadingCompletionTimeout) {
+				clearTimeout(loadingCompletionTimeout);
+				loadingCompletionTimeout = null;
+			}
+		};
 	});
 	
 	function refreshTable() {
-		lastRefreshedAppsCount = qlikApps.length;
-		hasNewDataPending = false;
-		performIndexedDBSearch();
+		// Clear any pending timeout and refresh immediately
+		if (loadingCompletionTimeout) {
+			clearTimeout(loadingCompletionTimeout);
+			loadingCompletionTimeout = null;
+		}
+		refreshTableInternal();
 	}
+	
+	// Set callbacks in store for header to use
+	$effect(() => {
+		loadingProgressStore.setCallbacks({
+			onRefreshTable: refreshTable,
+			onCheckForUpdates: checkForUpdates
+		});
+		return () => {
+			// Cleanup: remove callbacks when component unmounts
+			loadingProgressStore.setCallbacks({
+				onRefreshTable: undefined,
+				onCheckForUpdates: undefined
+			});
+		};
+	});
 
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	function handleSearchInput(value: string) {
@@ -1668,40 +1793,6 @@
 				</div>
 			</div>
 		{:else}
-			<div class="flex-shrink-0">
-				{#if isLoadingAppData && appItems.length > 0}
-					<LoadingIndicator
-						current={loadingProgress.current}
-						total={loadingProgress.total}
-						currentApp={loadingProgress.currentApp}
-						hasNewData={hasNewDataPending}
-						cachedCount={cacheLoadedAppsCount}
-						isPaused={isLoadingPaused}
-						pendingCount={pendingAppsToLoad.length}
-						onRefreshTable={refreshTable}
-					/>
-				{:else if isLoadingPaused && pendingAppsToLoad.length > 0 && appItems.length > 0 && !isLoadingDismissed}
-					<LoadingIndicator
-						current={qlikApps.length}
-						total={appItems.length}
-						currentApp=""
-						hasNewData={false}
-						cachedCount={cacheLoadedAppsCount}
-						isPaused={true}
-						pendingCount={pendingAppsToLoad.length}
-						onDismiss={() => isLoadingDismissed = true}
-					/>
-				{:else if !isLoadingAppData && !isLoadingApps && appItems.length > 0 && !isLoadingDismissed}
-					<CompletionIndicator
-						totalApps={qlikApps.length}
-						expectedTotal={appItems.length}
-						cachedCount={cacheLoadedAppsCount}
-						failedCount={failedAppsCount}
-						onCheckForUpdates={checkForUpdates}
-						onDismiss={() => isLoadingDismissed = true}
-					/>
-				{/if}
-			</div>
 			
 			<SearchInput
 				value={searchQuery}
@@ -1828,7 +1919,6 @@
 					{searchQuery}
 					onSearchWithQuery={handleImmediateSearch}
 					onExportToExcel={exportToExcel}
-					onCheckForUpdates={checkForUpdates}
 					onCopyToClipboard={copyToClipboard}
 					copiedDefinitionId={copiedDefinitionId}
 					tenantUrl={currentTenantUrl}

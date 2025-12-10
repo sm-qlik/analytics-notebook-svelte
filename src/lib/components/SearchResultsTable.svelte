@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as XLSX from 'xlsx';
 	import { getColumnValue, type SortableColumn, type SearchResult } from '$lib/utils/table-columns';
+	import { getAppUrl as buildAppUrl } from '$lib/utils/url-utils';
 
 	// SearchResult and SortableColumn types imported from utils/table-columns
 
@@ -14,7 +15,6 @@
 		onPreviousPage: () => void;
 		searchQuery: string;
 		onExportToExcel: () => void;
-		onCheckForUpdates?: () => void;
 		onCopyToClipboard: (text: string, id: string) => void;
 		copiedDefinitionId: string | null;
 		tenantUrl: string | null;
@@ -23,7 +23,7 @@
 		onSearchWithQuery: (query: string) => void;
 	}
 
-let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCheckForUpdates, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite, onSearchWithQuery }: Props = $props();
+let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite, onSearchWithQuery }: Props = $props();
 
 	let itemsPerPage = $state(25);
 	const pageSizeOptions = [25, 50, 100, 200];
@@ -130,8 +130,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 
 	function getAppUrl(appId: string | undefined): string | null {
 		if (!tenantUrl || !appId) return null;
-		const cleanTenantUrl = tenantUrl.replace(/^https?:\/\//, '');
-		return `https://${cleanTenantUrl}/sense/app/${appId}`;
+		return buildAppUrl(appId, tenantUrl);
 	}
 
 	function getCopyId(result: SearchResult, field: string): string {
@@ -323,7 +322,133 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 		const textStr = String(text);
 		return textStr.toLowerCase().includes(query.toLowerCase());
 	}
+
+	// Selection-based quick search icon state
+	let selectedText = $state('');
+	let selectionX = $state(0);
+	let selectionY = $state(0);
+	let showSelectionSearch = $state(false);
+	let selectedBgColor = $state('');
+	let suppressNextSelectionUpdate = $state(false);
+	let tableSelectionScopeEl: HTMLElement | null = null;
+
+	function updateSelectionState() {
+		const sel = window.getSelection?.();
+		if (suppressNextSelectionUpdate) {
+			// Skip one selection update cycle after we programmatically clear selection
+			suppressNextSelectionUpdate = false;
+			return;
+		}
+		if (!sel || sel.isCollapsed || !sel.rangeCount) {
+			selectedText = '';
+			showSelectionSearch = false;
+			return;
+		}
+		const text = sel.toString().trim();
+		if (!text) {
+			selectedText = '';
+			showSelectionSearch = false;
+			return;
+		}
+		const container = tableSelectionScopeEl;
+		if (!container) {
+			showSelectionSearch = false;
+			return;
+		}
+		// Ensure selection is inside our table area
+		const anchorNode = sel.anchorNode as Node | null;
+		const focusNode = sel.focusNode as Node | null;
+		const containsNode = (node: Node | null) => {
+			if (!node) return false;
+			const el = (node as any).nodeType === 1 ? (node as HTMLElement) : (node as any).parentElement as HTMLElement | null;
+			return !!el && container.contains(el);
+		};
+		if (!containsNode(anchorNode) || !containsNode(focusNode)) {
+			showSelectionSearch = false;
+			return;
+		}
+		const range = sel.getRangeAt(0);
+		const rect = range.getBoundingClientRect();
+		const containerRect = container.getBoundingClientRect();
+		selectionX = Math.max(0, rect.left - containerRect.left + rect.width / 2);
+		selectionY = Math.max(0, rect.top - containerRect.top - 24);
+		selectedText = text;
+		// Determine background color under selection to match icon
+		const midX = rect.left + rect.width / 2;
+		const midY = rect.top + rect.height / 2;
+		const elem = document.elementFromPoint(midX, midY) as HTMLElement | null;
+		const bg = elem ? getComputedStyle(elem).backgroundColor : '';
+		selectedBgColor = bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent' ? bg : '';
+		showSelectionSearch = true;
+	}
+
+	function clearSelectionSearch() {
+		showSelectionSearch = false;
+		selectedText = '';
+		selectedBgColor = '';
+	}
+
+	// Listen to selection changes and reposition icon on scroll/resize
+	$effect(() => {
+		const onSelectionChange = () => updateSelectionState();
+		const onScroll = () => updateSelectionState();
+		const onPointerDown = (e: Event) => {
+			// Hide icon if clicking outside the selection scope
+			const target = e.target as Node | null;
+			if (showSelectionSearch && tableSelectionScopeEl && target && !tableSelectionScopeEl.contains(target as Node)) {
+				clearSelectionSearch();
+			}
+		};
+		const onKeyDown = (e: KeyboardEvent) => {
+			// Hide icon on Escape
+			if (e.key === 'Escape' && showSelectionSearch) {
+				clearSelectionSearch();
+			}
+		};
+		document.addEventListener('selectionchange', onSelectionChange);
+		window.addEventListener('scroll', onScroll, true);
+		window.addEventListener('resize', onScroll);
+		document.addEventListener('pointerdown', onPointerDown, true);
+		document.addEventListener('keydown', onKeyDown, true);
+		return () => {
+			document.removeEventListener('selectionchange', onSelectionChange);
+			window.removeEventListener('scroll', onScroll, true);
+			window.removeEventListener('resize', onScroll);
+			document.removeEventListener('pointerdown', onPointerDown, true);
+			document.removeEventListener('keydown', onKeyDown, true);
+		};
+	});
+
+	// Also hide the icon when the searchQuery changes (new search performed)
+	$effect(() => {
+		const q = searchQuery.trim();
+		// Any change to the query should clear selection icon
+		clearSelectionSearch();
+	});
 </script>
+
+<style>
+	/* Use existing accent for selection + icon */
+	.selection-scope {
+		--accent-bg: #2563eb; /* blue-600 */
+	}
+	.dark .selection-scope {
+		--accent-bg: #3b82f6; /* blue-500 for dark */
+	}
+	.selection-scope ::selection {
+		background: var(--accent-bg);
+		color: #fff;
+	}
+	.selection-scope button[title="Search for selected text"] {
+		background-color: var(--accent-bg);
+		color: #fff;
+		transition: filter 120ms ease;
+	}
+	.selection-scope button[title="Search for selected text"]:hover {
+		filter: brightness(0.95);
+	}
+	/* Prefer CSS variable over inline fallback */
+</style>
 
 <div class="flex flex-col">
 	<div class="flex items-center justify-between flex-shrink-0 mb-4">
@@ -338,29 +463,6 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 		</div>
 		{#if sortedAndPaginatedResults.length > 0}
 			<div class="flex items-center gap-2">
-				{#if onCheckForUpdates}
-					<button
-						type="button"
-						onclick={onCheckForUpdates}
-						class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
-						title="Check for updated apps (partial check)"
-					>
-						<svg
-							class="w-4 h-4"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-							/>
-						</svg>
-						Check for updates
-					</button>
-				{/if}
 				<button
 					type="button"
 					onclick={onExportToExcel}
@@ -388,7 +490,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 
 	{#if sortedAndPaginatedResults.length > 0}
 		<div class="flex flex-col bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-			<div class="overflow-x-hidden min-w-0">
+			<div bind:this={tableSelectionScopeEl} class="selection-scope overflow-hidden min-w-0 relative">
 				<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 min-w-0">
 				<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
 					<tr>
@@ -624,7 +726,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</button>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1">
 										{#if name.length > 0}
@@ -676,7 +778,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</div>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
 										{@html highlightText(definition, debouncedQuery)}
@@ -738,7 +840,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</div>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 min-w-0 {shouldHighlightText(chartTitle || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{chartTitle || 'N/A'} ({chartId})">
 										{#if chartTitle}
@@ -807,7 +909,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 							<td class="px-4 py-4 text-sm">
 								<div class="truncate {getTypeColorClass(result.objectType)} font-medium" title={result.objectType}>{result.objectType}</div>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 min-w-0 {shouldHighlightText(result.app || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
 										<div class="truncate">
@@ -867,7 +969,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									</div>
 								</div>
 							</td>
-						<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+						<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 							<div class="flex items-start gap-2 group">
 								<div class="flex-1 min-w-0 {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{sheetName} ({sheetId})">
 									<div class="truncate">
@@ -933,6 +1035,30 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 					{/each}
 				</tbody>
 			</table>
+				{#if showSelectionSearch && selectedText}
+								<button
+				  type="button"
+				  title="Search for selected text"
+									class="absolute -translate-x-1/2 z-20 p-1 rounded-full text-white shadow"
+									  style={`left: ${selectionX}px; top: ${selectionY}px;`}
+									onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+									onclick={() => {
+										// Trigger search
+										onSearchWithQuery(selectedText);
+										// Clear selection and hide icon
+										const sel = window.getSelection?.();
+										if (sel && sel.removeAllRanges) {
+											suppressNextSelectionUpdate = true;
+											sel.removeAllRanges();
+										}
+										clearSelectionSearch();
+									}}
+				>
+				  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
+				  </svg>
+				</button>
+				{/if}
 			</div>
 			
 			{#if actualTotalPages > 1}

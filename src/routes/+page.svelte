@@ -4,6 +4,8 @@
   import Login from '$lib/components/Login.svelte';
   import ManageDataModal from '$lib/components/ManageDataModal.svelte';
   import ProfileTile from '$lib/components/ProfileTile.svelte';
+  import DeprecatedChartFinder from '$lib/components/DeprecatedChartFinder.svelte';
+  import HeaderProgressIndicator from '$lib/components/HeaderProgressIndicator.svelte';
   import { authStore } from '$lib/stores/auth';
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
@@ -16,6 +18,10 @@
   let authState = $state<any>(null);
   let isManageDataOpen = $state(false);
   let refreshTrigger = $state(0);
+  let activeView = $state<'search' | 'deprecated-chart-finder'>('search');
+  let isToolsDropdownOpen = $state(false);
+  let toolsDropdownRef = $state<HTMLDivElement | null>(null);
+  let toolsButtonRef = $state<HTMLButtonElement | null>(null);
   
   function handleDataDeleted(cacheKey: string, isCurrentTenant: boolean) {
     if (isCurrentTenant) {
@@ -162,6 +168,37 @@
     }
   }
   
+  // Close tools dropdown when clicking outside
+  $effect(() => {
+    if (!isToolsDropdownOpen) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        toolsDropdownRef &&
+        toolsButtonRef &&
+        !toolsDropdownRef.contains(event.target as Node) &&
+        !toolsButtonRef.contains(event.target as Node)
+      ) {
+        isToolsDropdownOpen = false;
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  });
+
+  function toggleToolsDropdown() {
+    isToolsDropdownOpen = !isToolsDropdownOpen;
+  }
+
+  function selectTool(tool: 'deprecated-chart-finder') {
+    activeView = tool;
+    isToolsDropdownOpen = false;
+  }
+
   async function checkExistingSession(tenantUrl: string) {
     try {
       isCheckingAuth = true;
@@ -231,23 +268,79 @@
 	<div class="px-[10px] max-w-full">
 		<div class="flex justify-between items-center h-16">
 			<!-- Logo and Navigation -->
-			<div class="flex items-center pl-4">
+			<div class="flex items-center pl-4 gap-6">
 				<div class="flex-shrink-0 relative">
 					<div class="flex items-center">
 						<Logo />
 						<h1 class="text-xl font-semibold text-gray-600 dark:text-gray-400">Analytics Notebook</h1>
 					</div>
 				</div>
+				
+				{#if isAuthenticated && authState}
+					<!-- Navigation Items -->
+					<nav class="flex items-center gap-4">
+						<button
+							onclick={() => activeView = 'search'}
+							class="px-3 py-2 text-sm font-medium transition-colors {activeView === 'search'
+								? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+								: 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}"
+						>
+							Search
+						</button>
+						
+						<!-- Tools Dropdown -->
+						<div class="relative">
+							<button
+								bind:this={toolsButtonRef}
+								type="button"
+								onclick={toggleToolsDropdown}
+								class="px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 {activeView === 'deprecated-chart-finder'
+									? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+									: 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}"
+								aria-expanded={isToolsDropdownOpen}
+								aria-haspopup="true"
+							>
+								Tools
+								<svg
+									class="w-4 h-4 transition-transform {isToolsDropdownOpen ? 'rotate-180' : ''}"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+								</svg>
+							</button>
+							
+							{#if isToolsDropdownOpen}
+								<div
+									bind:this={toolsDropdownRef}
+									class="absolute left-0 mt-2 min-w-56 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden"
+								>
+									<button
+										type="button"
+										onclick={() => selectTool('deprecated-chart-finder')}
+										class="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors {activeView === 'deprecated-chart-finder' ? 'bg-gray-50 dark:bg-gray-700' : ''}"
+									>
+										Deprecated Chart Finder
+									</button>
+								</div>
+							{/if}
+						</div>
+					</nav>
+				{/if}
 			</div>
 			
 			{#if isAuthenticated && authState}
-				<ProfileTile
-					tenantName={authState.tenantName}
-					tenantUrl={authState.tenantUrl}
-					userName={authState.user?.name}
-					onLogout={handleLogout}
-					onManageData={() => isManageDataOpen = true}
-				/>
+				<div class="flex items-center gap-3">
+					<HeaderProgressIndicator />
+					<ProfileTile
+						tenantName={authState.tenantName}
+						tenantUrl={authState.tenantUrl}
+						userName={authState.user?.name}
+						onLogout={handleLogout}
+						onManageData={() => isManageDataOpen = true}
+					/>
+				</div>
 			{/if}
 		</div>
 	</div>
@@ -263,8 +356,14 @@
 	</main>
 {:else if isAuthenticated}
 	<main class="flex-1 px-[10px] py-8 w-full flex flex-col min-h-0 max-w-full">
-		<!-- Search Component -->
-		<Search {refreshTrigger} />
+		<!-- Content -->
+		{#if activeView === 'search'}
+			<!-- Search Component -->
+			<Search {refreshTrigger} />
+		{:else if activeView === 'deprecated-chart-finder'}
+			<!-- Deprecated Chart Finder Tool -->
+			<DeprecatedChartFinder />
+		{/if}
 		
 		<!-- Template Container -->
 		<div id="templateContainer">
