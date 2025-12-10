@@ -2087,6 +2087,8 @@
 				<button
 					type="button"
 					onclick={() => showFavoritesOnly = !showFavoritesOnly}
+					aria-label="Show favorites only"
+					aria-pressed={showFavoritesOnly}
 					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border transition-all duration-150 {showFavoritesOnly ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-yellow-50 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700'} hover:opacity-80"
 				>
 					<span class="w-3.5 h-3.5 flex items-center justify-center rounded-sm {showFavoritesOnly ? '' : 'bg-yellow-200 dark:bg-yellow-800/50'}">
