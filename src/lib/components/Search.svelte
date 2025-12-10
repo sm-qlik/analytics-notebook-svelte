@@ -1307,10 +1307,8 @@
 		}
 		
 		// Reset page if query or filters changed
-		if (queryChanged || filtersChanged) {
-			currentPage = 1;
-			previousQuery = query;
-		}
+		currentPage = 1;
+		previousQuery = query;
 		
 		// Update filter sizes and favorites state BEFORE triggering search
 		previousFilterSizes = { spaces: spacesSize, apps: appsSize, sheets: sheetsSize, types: typesSize, sheetStates: sheetStatesSize };
