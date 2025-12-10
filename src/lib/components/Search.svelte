@@ -1765,6 +1765,11 @@
 				currentUserId = state.user.id;
 				previousUserId = state.user.id;
 			} else {
+				// User logged out - clear favorites and update state
+				if (previousUserId !== null) {
+					userChanged = true;
+					favorites = new Set();
+				}
 				currentUserId = null;
 				previousUserId = null;
 			}
