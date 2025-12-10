@@ -21,6 +21,7 @@ A Svelte web application for searching and exploring Qlik Cloud analytics conten
 - [Fuse.js](https://fusejs.io/) for fuzzy search
 - [SheetJS (xlsx)](https://sheetjs.com/) for Excel export
 - [@qlik/api](https://qlik.dev/toolkits/qlik-api/) for Qlik Cloud connectivity
+- [Vitest](https://vitest.dev/) for testing
 
 ## Getting Started
 
@@ -97,6 +98,7 @@ This runs `npm run build` followed by `npm run deploy`, which uses `gh-pages` to
 | `npm run lint` | Check code formatting |
 | `npm run test:e2e` | Run Playwright end-to-end tests |
 | `npm run publish` | Build and deploy to GitHub Pages |
+| `npm test` | Run test with Vitest and keep running tests on changes |
 
 ## Project Structure
 
