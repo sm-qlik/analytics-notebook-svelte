@@ -2,7 +2,7 @@
 	"name": "analytics-notebook-svelte",
 	"homepage": "https://sm-qlik.github.io/analytics-notebook-svelte/",
 	"private": true,
-	"version": "0.2.5",
+	"version": "0.2.6",
 	"type": "module",
 	"engines": {
 		"node": ">=22"

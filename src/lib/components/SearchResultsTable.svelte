@@ -388,7 +388,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 
 	{#if sortedAndPaginatedResults.length > 0}
 		<div class="flex flex-col bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-			<div class="overflow-x-hidden min-w-0">
+			<div class="overflow-hidden min-w-0 relative">
 				<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 min-w-0">
 				<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
 					<tr>
@@ -624,7 +624,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</button>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1">
 										{#if name.length > 0}
@@ -676,7 +676,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</div>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
 										{@html highlightText(definition, debouncedQuery)}
@@ -738,7 +738,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</div>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 min-w-0 {shouldHighlightText(chartTitle || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{chartTitle || 'N/A'} ({chartId})">
 										{#if chartTitle}
@@ -807,7 +807,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 							<td class="px-4 py-4 text-sm">
 								<div class="truncate {getTypeColorClass(result.objectType)} font-medium" title={result.objectType}>{result.objectType}</div>
 							</td>
-							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 min-w-0 {shouldHighlightText(result.app || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
 										<div class="truncate">
@@ -867,7 +867,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									</div>
 								</div>
 							</td>
-						<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+						<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group overflow-visible">
 							<div class="flex items-start gap-2 group">
 								<div class="flex-1 min-w-0 {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{sheetName} ({sheetId})">
 									<div class="truncate">
