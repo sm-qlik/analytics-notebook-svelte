@@ -214,5 +214,61 @@ describe('createSheetDimensionIndexItem', () => {
     expect(item.searchText).toContain('KnowledgeBaseName');
     expect(item.searchText).toContain('Dashboard');
     expect(item.searchText).toContain('Knowledgebases');
-  });  
+  });
+
+  it('builds SearchIndexItem for live master dimension reference', () => {
+    const cacheKey = 'services.eu.qlikcloud.com::68f7977183369c7d4ddbc86f';
+    const appId = '4c64553d-b002-49ee-ba12-0c7ddda7f3f3';
+    const appName = 'Access Evaluator';
+    const spaceId = '5fd9e29668e787000136c2eb';
+    const idx = 19;
+
+    const dim = {
+        "sheetId": "39fc256a-0d7e-4ab6-a8de-a904c639e097",
+        "sheetTitle": "Access Evaluation",
+        "sheetUrl": "https://services.eu.qlikcloud.com//sense/app/4c64553d-b002-49ee-ba12-0c7ddda7f3f3/sheet/39fc256a-0d7e-4ab6-a8de-a904c639e097",
+        "chartId": "90bf94fb-e028-4b1e-8d2a-12276376b8b7",
+        "chartType": "pivot-table",
+        "chartTitle": null,
+        "chartUrl": "https://services.eu.qlikcloud.com//sense/app/4c64553d-b002-49ee-ba12-0c7ddda7f3f3/sheet/39fc256a-0d7e-4ab6-a8de-a904c639e097/chartId/90bf94fb-e028-4b1e-8d2a-12276376b8b7",
+        "qLibraryId": "pHQjcC"
+    };
+
+    const getSheetStatus = (sheetId: string) => ({ approved: true, published: true });
+
+    const item = createSheetDimensionIndexItem(
+      cacheKey,
+      appId,
+      appName,
+      spaceId,
+      dim,
+      idx,
+      getSheetStatus
+    );
+
+    expect(item.objectType).toBe('Sheet Dimension');
+    expect(item.path).toBe(`sheetDimensions[19].qDef`);
+    expect(item.id).toBe('services.eu.qlikcloud.com::68f7977183369c7d4ddbc86f:4c64553d-b002-49ee-ba12-0c7ddda7f3f3:sheetDimensions[19].qDef');
+
+    expect(item.appId).toBe(appId);
+    expect(item.appName).toBe(appName);
+    expect(item.spaceId).toBe(spaceId);
+
+    expect(item.sheetId).toBe('39fc256a-0d7e-4ab6-a8de-a904c639e097');
+    expect(item.sheetName).toBe('Access Evaluation');
+    expect(item.sheetUrl).toBe('https://services.eu.qlikcloud.com//sense/app/4c64553d-b002-49ee-ba12-0c7ddda7f3f3/sheet/39fc256a-0d7e-4ab6-a8de-a904c639e097');
+
+    expect(item.chartId).toBe('90bf94fb-e028-4b1e-8d2a-12276376b8b7');
+    expect(item.chartTitle).toBe('');
+    expect(item.chartUrl).toBe('https://services.eu.qlikcloud.com//sense/app/4c64553d-b002-49ee-ba12-0c7ddda7f3f3/sheet/39fc256a-0d7e-4ab6-a8de-a904c639e097/chartId/90bf94fb-e028-4b1e-8d2a-12276376b8b7');
+
+    expect(item.sheetApproved).toBe(true);
+    expect(item.sheetPublished).toBe(true);
+
+    // No name or definiton for master dimension refernce!
+    expect(item.nameText).toBe('');
+    expect(item.definition).toBe('');
+
+    expect(item.searchText).toContain('Access Evaluation');
+  });   
 });

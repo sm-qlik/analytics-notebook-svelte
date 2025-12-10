@@ -253,7 +253,7 @@ export function createSheetDimensionIndexItem(
 		: (extractChartTitle(dim) || '');
 	const chartUrl = dim.chartUrl || '';
 	const definition = safeExtractQDef(dim.qDef) || safeExtractQDef(dim);
-	const labels = dim.qDef.qFieldLabels || [];
+	const labels = dim.qDef?.qFieldLabels || [];
 	const title = dim.title || '';
 	const sheetStatus = getSheetStatus(sheetId);
 	const stringLabels = extractStringLabels(labels);
