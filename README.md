@@ -99,6 +99,7 @@ This runs `npm run build` followed by `npm run deploy`, which uses `gh-pages` to
 | `npm run test:e2e` | Run Playwright end-to-end tests |
 | `npm run publish` | Build and deploy to GitHub Pages |
 | `npm test` | Run test with Vitest and keep running tests on changes |
+| `npm test run` | Run tests once |
 
 ## Project Structure
 
