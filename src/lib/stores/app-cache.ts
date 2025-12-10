@@ -56,8 +56,8 @@ export interface SearchIndexItem {
 	sheetPublished: boolean; // Sheet published status (Community)
 	objectType: string;      // Index for type filtering
 	title: string;
-	labels: string[];
-	labelsText: string;      // Joined labels for text search
+	name: string[];
+	nameText: string;      // Joined names for text search
 	searchText: string;      // Concatenated searchable text
 	definition: string;      // qDef value
 	chartId: string;
@@ -793,7 +793,7 @@ class AppCacheDB {
 						const searchableContent = (
 							item.searchText + ' ' + 
 							item.title + ' ' + 
-							item.labelsText + ' ' +
+							item.nameText + ' ' +
 							item.definition + ' ' +
 							item.appName + ' ' +
 							item.sheetName + ' ' +
@@ -861,7 +861,7 @@ class AppCacheDB {
 					}
 					if (matches && searchTextLower) {
 						const searchableContent = (
-							item.searchText + ' ' + item.title + ' ' + item.labelsText + ' ' +
+							item.searchText + ' ' + item.title + ' ' + item.nameText + ' ' +
 							item.definition + ' ' + item.appName + ' ' + item.sheetName
 						).toLowerCase();
 						if (!searchableContent.includes(searchTextLower)) matches = false;

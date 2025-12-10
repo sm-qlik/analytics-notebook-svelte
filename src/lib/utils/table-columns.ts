@@ -18,10 +18,10 @@ export interface SearchResult {
 	chartId?: string | null;
 	chartTitle?: string | null;
 	chartUrl?: string | null;
-	labels?: string[];
+	name?: string[];
 }
 
-export type SortableColumn = 'labels' | 'definition' | 'app' | 'sheet' | 'type' | 'chartTitle' | null;
+export type SortableColumn = 'name' | 'definition' | 'app' | 'sheet' | 'type' | 'chartTitle' | null;
 
 /**
  * Get the displayed value for a column from a search result.
@@ -34,9 +34,9 @@ export function getColumnValue(result: SearchResult, column: SortableColumn): st
 	let value: any;
 	
 	switch (column) {
-		case 'labels': {
-			const labels = result.labels || [];
-			value = labels.length > 0 ? labels.join(', ') : 'N/A';
+		case 'name': {
+			const name = result.name || [];
+			value = name.length > 0 ? name.join(', ') : 'N/A';
 			break;
 		}
 		
