@@ -95,10 +95,10 @@
 	{#if isOpen}
 		<div
 			bind:this={dropdownRef}
-			class="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden"
+			class="absolute right-0 mt-2 min-w-72 w-max max-w-96 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden"
 		>
 			<!-- User Info Section -->
-			<div class="px-4 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+			<div class="px-4 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 overflow-x-auto">
 				{#if userName}
 					<p class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">{userName}</p>
 				{/if}
@@ -108,7 +108,7 @@
 						href={fullUrl}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 break-all font-mono underline transition-colors"
+						class="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap font-mono underline transition-colors"
 					>
 						{tenantUrl}
 					</a>
