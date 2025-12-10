@@ -573,13 +573,14 @@
 					{@const chartTitle = result.chartTitle || result.context?.chartTitle || null}
 					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null}
 					{@const labels = result.labels || []}
-					{@const favoriteKey = `${result.appId}:${result.path}`}
-					{@const isFavorited = isFavorite(result.appId, result.path)}
+					{@const appId = result.appId || ''}
+					{@const favoriteKey = `${appId}:${result.path}`}
+					{@const isFavorited = isFavorite(appId, result.path)}
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 							<td class="px-2 py-4 text-center">
 								<button
 									type="button"
-									onclick={() => onToggleFavorite(result.appId, result.path)}
+									onclick={() => onToggleFavorite(appId, result.path)}
 									class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
 									title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
 								>
