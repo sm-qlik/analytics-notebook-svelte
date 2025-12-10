@@ -180,3 +180,49 @@ export function extractStringLabels(labels: any): string[] {
 	return [];
 }
 
+/**
+ * Extracts chart title from a chart object, handling both direct titles and expression definitions.
+ * Supports:
+ * - obj.title (string)
+ * - obj.qMeta?.title (string)
+ * - obj.qStringExpression?.qExpr (expression - returned as-is)
+ * - obj.qMetaDef?.title (string)
+ * - obj.qExpr (expression - returned as-is)
+ * 
+ * Note: Expressions are returned as-is without parsing, since they may be calculations.
+ * @param obj - The chart object to extract title from
+ * @returns The extracted chart title string, or null if not found
+ */
+export function extractChartTitle(obj: any): string | null {
+	if (!obj) return null;
+	
+	// Try direct title first
+	if (obj.title && typeof obj.title === 'string' && obj.title.trim()) {
+		return obj.title.trim();
+	}
+	
+	// Try qMeta.title
+	if (obj.qMeta?.title && typeof obj.qMeta.title === 'string' && obj.qMeta.title.trim()) {
+		return obj.qMeta.title.trim();
+	}
+	
+	// Try qMetaDef.title
+	if (obj.qMetaDef?.title && typeof obj.qMetaDef.title === 'string' && obj.qMetaDef.title.trim()) {
+		return obj.qMetaDef.title.trim();
+	}
+	
+	// Try qStringExpression.qExpr (expression format - return as-is)
+	if (obj.qStringExpression?.qExpr) {
+		if (typeof obj.qStringExpression.qExpr === 'string' && obj.qStringExpression.qExpr.trim()) {
+			return obj.qStringExpression.qExpr.trim();
+		}
+	}
+	
+	// Try other expression formats (return as-is)
+	if (obj.qExpr && typeof obj.qExpr === 'string' && obj.qExpr.trim()) {
+		return obj.qExpr.trim();
+	}
+	
+	return null;
+}
+

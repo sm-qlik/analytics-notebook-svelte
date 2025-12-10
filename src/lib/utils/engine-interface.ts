@@ -4,6 +4,8 @@
  * Based on analytics-notebook implementation
  */
 
+import { extractChartTitle } from './data-extraction';
+
 // JSONPath implementation (simplified version)
 function jsonPath(obj: any, path: string, callback?: (value: any) => void): any[] {
 	const results: any[] = [];
@@ -237,7 +239,7 @@ export class EngineInterface {
 							const chartInfo = {
 								chartId,
 								chartType: obj.qInfo.qType,
-								chartTitle: obj.title || obj.qMeta?.title || null,
+								chartTitle: extractChartTitle(obj),
 								chartUrl,
 							};
 

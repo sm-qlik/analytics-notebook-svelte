@@ -5,7 +5,7 @@
 
 import type { SearchResultItem } from './search-result-item';
 import type { SearchIndexItem } from '../stores/app-cache';
-import { safeExtractQDef, extractStringLabels } from './data-extraction';
+import { safeExtractQDef, extractStringLabels, extractChartTitle } from './data-extraction';
 
 /**
  * Special ID for "Personal" space (apps with no spaceId)
@@ -247,7 +247,10 @@ export function createSheetDimensionIndexItem(
 	const sheetName = dim.sheetTitle || '';
 	const sheetUrl = dim.sheetUrl || '';
 	const chartId = dim.chartId || '';
-	const chartTitle = dim.chartTitle || '';
+	// Extract chart title - handle both string and object/expression formats
+	const chartTitle = typeof dim.chartTitle === 'string' 
+		? dim.chartTitle 
+		: (extractChartTitle(dim) || '');
 	const chartUrl = dim.chartUrl || '';
 	const definition = safeExtractQDef(dim.qDef) || safeExtractQDef(dim);
 	const labels = dim.qFieldLabels || [];
@@ -298,7 +301,10 @@ export function createSheetMeasureIndexItem(
 	const sheetName = measure.sheetTitle || '';
 	const sheetUrl = measure.sheetUrl || '';
 	const chartId = measure.chartId || '';
-	const chartTitle = measure.chartTitle || '';
+	// Extract chart title - handle both string and object/expression formats
+	const chartTitle = typeof measure.chartTitle === 'string' 
+		? measure.chartTitle 
+		: (extractChartTitle(measure) || '');
 	const chartUrl = measure.chartUrl || '';
 	const definition = safeExtractQDef(measure.qDef) || safeExtractQDef(measure);
 	const title = measure.title || '';
