@@ -3,6 +3,7 @@
   import Search from '$lib/components/Search.svelte';
   import Login from '$lib/components/Login.svelte';
   import ManageDataModal from '$lib/components/ManageDataModal.svelte';
+  import ProfileTile from '$lib/components/ProfileTile.svelte';
   import { authStore } from '$lib/stores/auth';
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
@@ -240,30 +241,12 @@
 			</div>
 			
 			{#if isAuthenticated && authState}
-				<div class="flex items-center gap-4">
-				{#if authState.tenantName}
-					<a
-						href={authState.tenantUrl}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="text-sm text-gray-600 dark:text-gray-400 hidden sm:block hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
-					>
-						{authState.tenantName}
-					</a>
-				{/if}
-					{#if authState.user?.name}
-						<span class="text-sm text-gray-600 dark:text-gray-400 hidden sm:block">
-							{authState.user.name}
-						</span>
-					{/if}
-					<button
-						type="button"
-						onclick={handleLogout}
-						class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-					>
-						Log out
-					</button>
-				</div>
+				<ProfileTile
+					tenantName={authState.tenantName}
+					tenantUrl={authState.tenantUrl}
+					userName={authState.user?.name}
+					onLogout={handleLogout}
+				/>
 			{/if}
 		</div>
 	</div>
