@@ -14,7 +14,6 @@
 		onPreviousPage: () => void;
 		searchQuery: string;
 		onExportToExcel: () => void;
-		onCheckForUpdates?: () => void;
 		onCopyToClipboard: (text: string, id: string) => void;
 		copiedDefinitionId: string | null;
 		tenantUrl: string | null;
@@ -23,7 +22,7 @@
 		onSearchWithQuery: (query: string) => void;
 	}
 
-let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCheckForUpdates, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite, onSearchWithQuery }: Props = $props();
+let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite, onSearchWithQuery }: Props = $props();
 
 	let itemsPerPage = $state(25);
 	const pageSizeOptions = [25, 50, 100, 200];
@@ -338,29 +337,6 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 		</div>
 		{#if sortedAndPaginatedResults.length > 0}
 			<div class="flex items-center gap-2">
-				{#if onCheckForUpdates}
-					<button
-						type="button"
-						onclick={onCheckForUpdates}
-						class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
-						title="Check for updated apps (partial check)"
-					>
-						<svg
-							class="w-4 h-4"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-							/>
-						</svg>
-						Check for updates
-					</button>
-				{/if}
 				<button
 					type="button"
 					onclick={onExportToExcel}

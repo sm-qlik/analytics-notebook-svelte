@@ -5,6 +5,7 @@
   import ManageDataModal from '$lib/components/ManageDataModal.svelte';
   import ProfileTile from '$lib/components/ProfileTile.svelte';
   import DeprecatedChartFinder from '$lib/components/DeprecatedChartFinder.svelte';
+  import HeaderProgressIndicator from '$lib/components/HeaderProgressIndicator.svelte';
   import { authStore } from '$lib/stores/auth';
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
@@ -330,13 +331,16 @@
 			</div>
 			
 			{#if isAuthenticated && authState}
-				<ProfileTile
-					tenantName={authState.tenantName}
-					tenantUrl={authState.tenantUrl}
-					userName={authState.user?.name}
-					onLogout={handleLogout}
-					onManageData={() => isManageDataOpen = true}
-				/>
+				<div class="flex items-center gap-3">
+					<HeaderProgressIndicator />
+					<ProfileTile
+						tenantName={authState.tenantName}
+						tenantUrl={authState.tenantUrl}
+						userName={authState.user?.name}
+						onLogout={handleLogout}
+						onManageData={() => isManageDataOpen = true}
+					/>
+				</div>
 			{/if}
 		</div>
 	</div>

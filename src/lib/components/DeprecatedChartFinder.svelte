@@ -3,6 +3,7 @@
 	import { get } from 'svelte/store';
 	import { authStore } from '$lib/stores/auth';
 	import { appCache } from '$lib/stores/app-cache';
+	import { loadingProgressStore } from '$lib/stores/loading-progress';
 	import { loadQlikAPI, configureQlikAuthOnce } from '$lib/utils/qlik-auth';
 	import {
 		extractChartsFromAppStructure,
@@ -227,6 +228,18 @@
 	onMount(() => {
 		// Auto-run on mount
 		findDeprecatedCharts();
+		
+		// Register refresh callback with loading progress store
+		loadingProgressStore.setCallbacks({
+			onRefreshChartFinder: findDeprecatedCharts
+		});
+		
+		return () => {
+			// Cleanup: remove callback when component unmounts
+			loadingProgressStore.setCallbacks({
+				onRefreshChartFinder: undefined
+			});
+		};
 	});
 </script>
 
@@ -235,16 +248,9 @@
 		<h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
 			Deprecated Chart Finder
 		</h2>
-		<p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+		<p class="text-sm text-gray-600 dark:text-gray-400">
 			Finds all charts that use deprecated chart types (qlik-button-for-navigation, qlik-show-hide-container, qlik-share-button, qlik-tabbed-container, qlik-heatmap-chart, qlik-multi-kpi, qlik-bullet-chart, qlik-barplus-chart) across all cached apps.
 		</p>
-		<button
-			onclick={findDeprecatedCharts}
-			disabled={isLoading}
-			class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-		>
-			{isLoading ? 'Searching...' : 'Refresh Results'}
-		</button>
 	</div>
 
 	{#if isLoading}
@@ -271,15 +277,16 @@
 					Found {deprecatedCharts.length} deprecated chart{deprecatedCharts.length !== 1 ? 's' : ''}
 				</p>
 			</div>
-			<div class="overflow-x-auto">
-				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-					<thead class="bg-gray-50 dark:bg-gray-700">
-						<tr>
-							<th
-								class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
-								onclick={() => toggleSort('space')}
-								title="Click to sort"
-							>
+			<div class="overflow-hidden min-w-0 relative">
+				<div class="overflow-x-auto">
+					<table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 min-w-0">
+						<thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
+							<tr>
+								<th
+									class="w-[12%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+									onclick={() => toggleSort('space')}
+									title="Click to sort"
+								>
 								<div class="flex items-center gap-1">
 									Space
 									{#if sortColumn === 'space'}
@@ -296,7 +303,7 @@
 								</div>
 							</th>
 							<th
-								class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+								class="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
 								onclick={() => toggleSort('app')}
 								title="Click to sort"
 							>
@@ -316,7 +323,7 @@
 								</div>
 							</th>
 							<th
-								class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+								class="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
 								onclick={() => toggleSort('appId')}
 								title="Click to sort"
 							>
@@ -336,7 +343,7 @@
 								</div>
 							</th>
 							<th
-								class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+								class="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
 								onclick={() => toggleSort('sheet')}
 								title="Click to sort"
 							>
@@ -356,7 +363,7 @@
 								</div>
 							</th>
 							<th
-								class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+								class="w-[20%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
 								onclick={() => toggleSort('chartTitle')}
 								title="Click to sort"
 							>
@@ -376,7 +383,7 @@
 								</div>
 							</th>
 							<th
-								class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
+								class="w-[20%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none"
 								onclick={() => toggleSort('chartType')}
 								title="Click to sort"
 							>
@@ -411,9 +418,9 @@
 							{@const chartTitleCopyId = `chartTitle-${chart.chartId}`}
 							{@const chartTypeCopyId = `chartType-${chart.chartId}`}
 							<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 group">
-									<div class="flex items-center justify-between gap-2">
-										<span>{chart.spaceName || 'Personal'}</span>
+								<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+									<div class="flex items-center justify-between gap-2 min-w-0">
+										<span class="truncate">{chart.spaceName || 'Personal'}</span>
 										<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 											<button
 												type="button"
@@ -447,9 +454,9 @@
 										</div>
 									</div>
 								</td>
-								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 group">
-									<div class="flex items-center justify-between gap-2">
-										<span>{chart.appName}</span>
+								<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+									<div class="flex items-center justify-between gap-2 min-w-0">
+										<span class="truncate">{chart.appName}</span>
 										<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 											<button
 												type="button"
@@ -481,9 +488,9 @@
 										</div>
 									</div>
 								</td>
-								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 group">
-									<div class="flex items-center justify-between gap-2">
-										<span class="font-mono text-xs">{chart.appId}</span>
+								<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+									<div class="flex items-center justify-between gap-2 min-w-0">
+										<span class="font-mono text-xs truncate">{chart.appId}</span>
 										<button
 											type="button"
 											onclick={() => copyToClipboard(chart.appId, appIdCopyId)}
@@ -502,9 +509,9 @@
 										</button>
 									</div>
 								</td>
-								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 group">
-									<div class="flex items-center justify-between gap-2">
-										<span>{chart.sheetTitle}</span>
+								<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+									<div class="flex items-center justify-between gap-2 min-w-0">
+										<span class="truncate">{chart.sheetTitle}</span>
 										<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 											<button
 												type="button"
@@ -536,12 +543,12 @@
 										</div>
 									</div>
 								</td>
-								<td class="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 group">
-									<div class="flex items-center justify-between gap-2">
+								<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+									<div class="flex items-center justify-between gap-2 min-w-0">
 										{#if chart.chartTitle}
-											<span>{chart.chartTitle}</span>
+											<span class="truncate">{chart.chartTitle}</span>
 										{:else}
-											<span class="text-gray-400 italic">Untitled</span>
+											<span class="text-gray-400 italic truncate">Untitled</span>
 										{/if}
 										<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 											{#if chart.chartTitle}
@@ -576,10 +583,10 @@
 										</div>
 									</div>
 								</td>
-								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 group">
-									<div class="flex items-center justify-between gap-2">
+								<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+									<div class="flex items-center justify-between gap-2 min-w-0">
 										<span
-											class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+											class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 truncate"
 										>
 											{chart.chartType}
 										</span>
@@ -605,6 +612,7 @@
 						{/each}
 					</tbody>
 				</table>
+				</div>
 			</div>
 		</div>
 	{/if}
