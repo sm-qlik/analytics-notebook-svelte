@@ -574,7 +574,6 @@
 					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null}
 					{@const labels = result.labels || []}
 					{@const appId = result.appId || ''}
-					{@const favoriteKey = `${appId}:${result.path}`}
 					{@const isFavorited = isFavorite(appId, result.path)}
 						<tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 							<td class="px-2 py-4 text-center">
