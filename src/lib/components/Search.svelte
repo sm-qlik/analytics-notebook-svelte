@@ -281,7 +281,7 @@
 	 * 2. Results are cached per tenant/user
 	 * 3. Only re-fetches when cache key changes or search index is updated
 	 */
-	async function loadAvailableTypes() {
+	async function loadAvailableTypes(forceRefresh = false) {
 		if (!currentTenantUrl || !currentUserId) {
 			availableTypes = [];
 			availableTypesCacheKey = null;
@@ -290,8 +290,8 @@
 		
 		const cacheKey = getCacheKey(currentTenantUrl, currentUserId);
 		
-		// Skip if we already have types for this cache key
-		if (availableTypesCacheKey === cacheKey && availableTypes.length > 0) {
+		// Skip if we already have types for this cache key (unless forcing refresh)
+		if (!forceRefresh && availableTypesCacheKey === cacheKey && availableTypes.length > 0) {
 			return;
 		}
 		
@@ -406,7 +406,7 @@
 		if (searchItems.length > 0) {
 			await appCache.addSearchIndexItems(searchItems);
 			// Refresh available types after indexing new items (may include new object types)
-			await loadAvailableTypes();
+			await loadAvailableTypes(true);
 		}
 
 		return searchItems.length;
@@ -422,9 +422,6 @@
 		}
 
 		isSearching = true;
-		// Clear results immediately when starting a new search to prevent stale data
-		searchResults = [];
-		unfilteredResults = [];
 		const cacheKey = getCacheKey(currentTenantUrl, currentUserId);
 
 		try {
