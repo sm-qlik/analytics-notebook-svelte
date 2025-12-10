@@ -624,7 +624,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</button>
 							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1">
 										{#if name.length > 0}
@@ -640,7 +640,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 										{/if}
 									</div>
 									{#if name.length > 0}
-										<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
+										<div class="absolute -top-[1px] right-0 flex flex-col items-end gap-0 opacity-0 group-hover:opacity-100 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-tl shadow-sm">
 											<button
 												type="button"
 												onclick={() => onCopyToClipboard(name.join(', '), getCopyId(result, 'name'))}
@@ -676,13 +676,13 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</div>
 							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 break-words whitespace-normal min-w-0 {shouldHighlightText(definition, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title={definition}>
 										{@html highlightText(definition, debouncedQuery)}
 									</div>
 									{#if definition !== 'N/A'}
-										<div class="flex flex-col items-end gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100">
+										<div class="absolute -top-[1px] right-0 flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-tl shadow-sm">
 											<button
 												type="button"
 												onclick={() => onCopyToClipboard(definition, getCopyId(result, 'definition'))}
@@ -738,7 +738,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									{/if}
 								</div>
 							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 min-w-0 {shouldHighlightText(chartTitle || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{chartTitle || 'N/A'} ({chartId})">
 										{#if chartTitle}
@@ -754,7 +754,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 											<span class="text-gray-400">N/A</span>
 										{/if}
 									</div>
-									<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
+									<div class="absolute -top-[1px] right-0 flex flex-col items-end gap-0 opacity-0 group-hover:opacity-100 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-tl shadow-sm">
 										{#if chartTitle}
 											<button
 												type="button"
@@ -807,7 +807,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 							<td class="px-4 py-4 text-sm">
 								<div class="truncate {getTypeColorClass(result.objectType)} font-medium" title={result.objectType}>{result.objectType}</div>
 							</td>
-							<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+							<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
 								<div class="flex items-start gap-2 group">
 									<div class="flex-1 min-w-0 {shouldHighlightText(result.app || '', debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{result.app} ({result.appId})">
 										<div class="truncate">
@@ -819,7 +819,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 											</div>
 										{/if}
 									</div>
-									<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
+									<div class="absolute -top-[1px] right-0 flex flex-col items-end gap-0 opacity-0 group-hover:opacity-100 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-tl shadow-sm">
 										<button
 											type="button"
 											onclick={() => onCopyToClipboard(result.app || '', getCopyId(result, 'app'))}
@@ -867,7 +867,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 									</div>
 								</div>
 							</td>
-						<td class="px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
+						<td class="relative px-4 py-4 text-sm text-gray-900 dark:text-gray-100 group">
 							<div class="flex items-start gap-2 group">
 								<div class="flex-1 min-w-0 {shouldHighlightText(sheetName, debouncedQuery) ? 'bg-yellow-100 dark:bg-yellow-900/30' : ''}" title="{sheetName} ({sheetId})">
 									<div class="truncate">
@@ -879,7 +879,7 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 										</div>
 									{/if}
 								</div>
-								<div class="flex flex-col items-end gap-0 flex-shrink-0 opacity-0 group-hover:opacity-100 self-start">
+								<div class="absolute -top-[1px] right-0 flex flex-col items-end gap-0 opacity-0 group-hover:opacity-100 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-tl shadow-sm">
 									{#if sheetName && sheetName !== 'N/A'}
 										<button
 											type="button"
