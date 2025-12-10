@@ -583,7 +583,7 @@
 		const maxPages = 100; // Safety limit to prevent infinite loops
 		
 		// First request
-		let response = await items.getItems({ resourceType: 'app', limit: 100 });
+		let response = await items.getItems({ resourceType: 'app[directQuery,]', limit: 100 });
 		if (response.status !== 200) {
 			throw new Error(`Failed to get items: ${response.status}`);
 		}
@@ -1172,24 +1172,88 @@
 
 	/**
 	 * Check for updates without clearing the cache - only loads new/changed apps
+	 * This is a partial check that doesn't refresh the whole page
 	 */
 	async function checkForUpdates() {
 		if (isLoadingApps || isLoadingAppData) return;
 		
-		// Reset loading state but keep existing data
-		loadingAppIds = new Set();
-		hasNewDataPending = false;
-		failedAppsCount = 0;
-		pendingAppsToLoad = [];
-		isLoadingPaused = false;
-		isLoadingDismissed = false;
-		
-		// Reset appItems to allow loadAppList to run
-		// But keep qlikApps, sheets, etc. as they contain the cached data display
-		appItems = [];
-		
-		// Re-run the app list load which will check for updates
-		await loadAppList();
+		try {
+			const { qlikApi, tenantUrl } = await ensureAuthConfigured();
+			const { items, users } = qlikApi;
+			
+			// Get current user ID for cache keying
+			let userId = currentUserId;
+			if (!userId) {
+				try {
+					const userResponse = await users.getMyUser();
+					if (userResponse.status === 200 && userResponse.data?.id) {
+						userId = userResponse.data.id;
+						currentUserId = userId;
+					}
+				} catch (e) {
+					console.warn('Failed to get user ID, using fallback:', e);
+					userId = 'default';
+					currentUserId = userId;
+				}
+			}
+			
+			if (!tenantUrl || !userId) {
+				console.warn('Cannot check for updates: missing tenantUrl or userId');
+				return;
+			}
+			
+			// Fetch current app list (lightweight - just metadata)
+			const allApps = await fetchAllAppItems(items);
+			
+			// Compare with cache to find what changed
+			const { toLoad, toRemove, unchangedMetadata } = await appCache.getAppsToUpdateLightweight(
+				tenantUrl,
+				userId,
+				allApps
+			);
+			
+			console.log(`Partial check: ${unchangedMetadata.length} unchanged, ${toLoad.length} to load, ${toRemove.length} to remove`);
+			
+			// Remove apps that no longer exist
+			if (toRemove.length > 0) {
+				console.log(`Removing ${toRemove.length} apps that no longer exist:`, toRemove);
+				await appCache.removeApps(tenantUrl, userId, toRemove);
+				
+				// Update in-memory state to remove deleted apps
+				qlikApps = qlikApps.filter(app => !toRemove.includes(app.id));
+				sheets = sheets.filter(sheet => !toRemove.includes(sheet.appId));
+				
+				// Remove from appItems if it exists
+				appItems = appItems.filter(app => !toRemove.includes(app.resourceId));
+			}
+			
+			// Update appItems with current list (for consistency)
+			appItems = allApps;
+			apps = allApps.map((app: any) => ({
+				name: app.name || app.resourceId,
+				id: app.resourceId,
+				spaceId: app.spaceId || app.space?.resourceId || undefined
+			}));
+			
+			// Remove search index for apps that need updating (will be rebuilt when loaded)
+			for (const app of toLoad) {
+				await appCache.removeSearchIndexForApp(tenantUrl, userId, app.resourceId);
+			}
+			
+			// Load only the apps that changed (in background, non-blocking)
+			if (toLoad.length > 0) {
+				// Load changed apps in background without blocking
+				loadAppDataInBackground(toLoad).catch(err => {
+					console.error('Error loading updated apps:', err);
+				});
+			} else {
+				// No changes detected, just refresh the search to show current results
+				await performIndexedDBSearch();
+			}
+			
+		} catch (err: any) {
+			console.error('Failed to check for updates:', err);
+		}
 	}
 
 	// Watch for refreshTrigger changes - if it changes, clear state and reload
@@ -1764,6 +1828,7 @@
 					{searchQuery}
 					onSearchWithQuery={handleImmediateSearch}
 					onExportToExcel={exportToExcel}
+					onCheckForUpdates={checkForUpdates}
 					onCopyToClipboard={copyToClipboard}
 					copiedDefinitionId={copiedDefinitionId}
 					tenantUrl={currentTenantUrl}

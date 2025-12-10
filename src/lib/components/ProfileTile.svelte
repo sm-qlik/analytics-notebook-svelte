@@ -3,12 +3,14 @@
 		tenantName, 
 		tenantUrl, 
 		userName, 
-		onLogout 
+		onLogout,
+		onManageData
 	}: {
 		tenantName: string | null;
 		tenantUrl: string | null;
 		userName: string | null;
 		onLogout: () => void;
+		onManageData?: () => void;
 	} = $props();
 
 	let isOpen = $state(false);
@@ -112,6 +114,35 @@
 					</a>
 				{/if}
 			</div>
+
+			<!-- Manage Data Button -->
+			{#if onManageData}
+				<div class="py-1.5 border-b border-gray-100 dark:border-gray-700">
+					<button
+						type="button"
+						onclick={() => {
+							isOpen = false;
+							onManageData();
+						}}
+						class="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2.5"
+					>
+						<svg
+							class="w-4 h-4 text-gray-500 dark:text-gray-400"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
+							/>
+						</svg>
+						Manage data
+					</button>
+				</div>
+			{/if}
 
 			<!-- Logout Button -->
 			<div class="py-1.5">
