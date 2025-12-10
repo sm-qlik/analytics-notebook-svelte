@@ -14,6 +14,7 @@
 		onPreviousPage: () => void;
 		searchQuery: string;
 		onExportToExcel: () => void;
+		onCheckForUpdates?: () => void;
 		onCopyToClipboard: (text: string, id: string) => void;
 		copiedDefinitionId: string | null;
 		tenantUrl: string | null;
@@ -22,7 +23,7 @@
 		onSearchWithQuery: (query: string) => void;
 	}
 
-let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite, onSearchWithQuery }: Props = $props();
+let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCheckForUpdates, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite, onSearchWithQuery }: Props = $props();
 
 	let itemsPerPage = $state(25);
 	const pageSizeOptions = [25, 50, 100, 200];
@@ -336,27 +337,52 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 			{/if}
 		</div>
 		{#if sortedAndPaginatedResults.length > 0}
-			<button
-				type="button"
-				onclick={onExportToExcel}
-				class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-				title="Export results to Excel"
-			>
-				<svg
-					class="w-4 h-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
+			<div class="flex items-center gap-2">
+				{#if onCheckForUpdates}
+					<button
+						type="button"
+						onclick={onCheckForUpdates}
+						class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
+						title="Check for updated apps (partial check)"
+					>
+						<svg
+							class="w-4 h-4"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+							/>
+						</svg>
+						Check for updates
+					</button>
+				{/if}
+				<button
+					type="button"
+					onclick={onExportToExcel}
+					class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+					title="Export results to Excel"
 				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-					/>
-				</svg>
-				Export to Excel
-			</button>
+					<svg
+						class="w-4 h-4"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+						/>
+					</svg>
+					Export to Excel
+				</button>
+			</div>
 		{/if}
 	</div>
 
