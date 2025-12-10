@@ -19,9 +19,10 @@
 		tenantUrl: string | null;
 		onToggleFavorite: (appId: string, path: string) => void;
 		isFavorite: (appId: string, path: string) => boolean;
+		onSearchWithQuery: (query: string) => void;
 	}
 
-	let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite }: Props = $props();
+let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, onPreviousPage, searchQuery, onExportToExcel, onCopyToClipboard, copiedDefinitionId, tenantUrl, onToggleFavorite, isFavorite, onSearchWithQuery }: Props = $props();
 
 	let itemsPerPage = $state(25);
 	const pageSizeOptions = [25, 50, 100, 200];
@@ -674,6 +675,22 @@
 														/>
 													</svg>
 												{/if}
+											</button>
+											<!-- Placeholder search icon (not hooked up yet) -->
+											<button
+												type="button"
+												class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+												title="Search for definition"
+												onclick={() => onSearchWithQuery(definition)}
+											>
+												<svg
+													class="w-4 h-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+												>
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
+												</svg>
 											</button>
 										</div>
 									{/if}

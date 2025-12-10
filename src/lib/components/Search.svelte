@@ -1381,6 +1381,17 @@
 		}, 300);
 	}
 
+	// Immediate search (no debounce) for actions like clicking the magnifying-glass
+	function handleImmediateSearch(value: string) {
+		searchQuery = value;
+		isSearching = true;
+		if (searchTimeout) {
+			clearTimeout(searchTimeout);
+			searchTimeout = null;
+		}
+		performIndexedDBSearch();
+	}
+
 	function toggleSpace(spaceId: string) {
 		const newSet = createNewSet(selectedSpaces);
 		if (newSet.has(spaceId)) {
@@ -1750,6 +1761,7 @@
 					onNextPage={goToNextPage}
 					onPreviousPage={goToPreviousPage}
 					{searchQuery}
+					onSearchWithQuery={handleImmediateSearch}
 					onExportToExcel={exportToExcel}
 					onCopyToClipboard={copyToClipboard}
 					copiedDefinitionId={copiedDefinitionId}

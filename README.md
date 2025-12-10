@@ -7,7 +7,8 @@ A Svelte web application for searching and exploring Qlik Cloud analytics conten
 - **Qlik Cloud OAuth Authentication** — Securely connect to Qlik Cloud tenants via OAuth2
 - **Fuzzy Search** — Search through master dimensions, master measures, sheet dimensions, and sheet measures
 - **Multi-App Support** — Browse and search across multiple Qlik applications simultaneously
-- **Filtering** — Filter results by space, app, sheet, or object type
+- **Filtering** — Filter results by space, app, sheet, object type, or sheet state (Public/Community/Private)
+- **Favorites** — Star and save favorite dimensions and measures for quick access
 - **Excel Export** — Export search results to XLSX format
 - **Dark Mode** — Supports light and dark themes
 - **Responsive** — Works on desktop and mobile devices
@@ -18,7 +19,7 @@ A Svelte web application for searching and exploring Qlik Cloud analytics conten
 - [Svelte 5](https://svelte.dev/) with [SvelteKit](https://kit.svelte.dev/)
 - [TypeScript](https://www.typescriptlang.org/)
 - [Tailwind CSS 4](https://tailwindcss.com/)
-- [Fuse.js](https://fusejs.io/) for fuzzy search
+- [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) for efficient client-side search and data storage
 - [SheetJS (xlsx)](https://sheetjs.com/) for Excel export
 - [@qlik/api](https://qlik.dev/toolkits/qlik-api/) for Qlik Cloud connectivity
 - [Vitest](https://vitest.dev/) for testing
@@ -82,8 +83,9 @@ This runs `npm run build` followed by `npm run deploy`, which uses `gh-pages` to
 1. **Enter your Qlik Cloud tenant URL** — e.g., `your-tenant.us.qlikcloud.com` or `your-tenant.eu.qlikcloud.com`
 2. **Authenticate** — You'll be redirected to Qlik Cloud for OAuth authentication
 3. **Search** — Once authenticated, apps will load automatically. Use the search bar to find dimensions and measures
-4. **Filter** — Use the sidebar to filter by space, app, sheet, or object type
-5. **Export** — Click the export button to download results as an Excel file
+4. **Filter** — Use the sidebar to filter by space, app, sheet, object type, or sheet state. Use the type filter chips to filter by Master Dimension, Master Measure, Sheet Dimension, or Sheet Measure
+5. **Favorites** — Click the star icon on any result to add it to your favorites. Use the "Favorites" filter button to show only favorited items
+6. **Export** — Click the export button to download results as an Excel file
 
 ## Available Scripts
 
@@ -96,10 +98,9 @@ This runs `npm run build` followed by `npm run deploy`, which uses `gh-pages` to
 | `npm run check:watch` | Run type checking in watch mode |
 | `npm run format` | Format code with Prettier |
 | `npm run lint` | Check code formatting |
-| `npm run test:e2e` | Run Playwright end-to-end tests |
 | `npm run publish` | Build and deploy to GitHub Pages |
-| `npm test` | Run test with Vitest and keep running tests on changes |
-| `npm test run` | Run tests once |
+| `npm test` | Run unit tests with Vitest (watch mode) |
+| `npm run test:unit` | Run unit tests with Vitest |
 
 ## Project Structure
 
