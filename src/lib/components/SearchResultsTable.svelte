@@ -581,6 +581,8 @@
 								<button
 									type="button"
 									onclick={() => onToggleFavorite(appId, result.path)}
+									aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+									aria-pressed={isFavorited}
 									class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
 									title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
 								>
