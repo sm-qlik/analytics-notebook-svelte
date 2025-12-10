@@ -37,7 +37,6 @@
 
 	let searchQuery = $state('');	
 	let searchResults = $state([] as Array<SearchResultItem>);
-	let unfilteredResults = $state([] as Array<SearchResultItem>);
 	let isSearching = $state(false);
 	let isLoadingApps = $state(false);
 	let isLoadingAppData = $state(false);
