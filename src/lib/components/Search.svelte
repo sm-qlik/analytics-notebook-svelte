@@ -1632,16 +1632,18 @@
 	
 	onMount(() => {
 		let previousTenantUrl = '';
+		let previousUserId: string | null = null;
 		const unsubscribe = authStore.subscribe(state => {
+			// Track if either tenant or user changed
+			let tenantChanged = false;
+			let userChanged = false;
+			
 			// Extract hostname from tenant URL for keying purposes
 			if (state.tenantUrl) {
 				const prevTenantUrl = currentTenantUrl;
 				currentTenantUrl = state.tenantUrl;
+				tenantChanged = prevTenantUrl !== state.tenantUrl;
 				
-				// Load favorites when tenant changes
-				if (prevTenantUrl !== state.tenantUrl) {
-					loadFavorites();
-				}
 				try {
 					const url = new URL(state.tenantUrl);
 					currentTenantHostname = url.hostname;
@@ -1666,15 +1668,23 @@
 			
 			// Update currentUserId if available
 			if (state.user?.id) {
-				const previousUserId = currentUserId;
+				userChanged = previousUserId !== state.user.id;
 				currentUserId = state.user.id;
-				// Load favorites when user changes
-				if (previousUserId !== state.user.id) {
-					loadFavorites();
+				previousUserId = state.user.id;
+			} else {
+				// User logged out - clear favorites and update state
+				if (previousUserId !== null) {
+					userChanged = true;
+					favorites = new Set();
 				}
+				currentUserId = null;
+				previousUserId = null;
 			}
 			
-			// Load favorites when tenant/user is available
+			// Load favorites only once after both values are updated
+			if ((tenantChanged || userChanged) && currentTenantUrl && currentUserId) {
+				loadFavorites();
+			}
 			
 			if (state.isAuthenticated && appItems.length === 0 && !isLoadingApps) {
 				loadAppList();
