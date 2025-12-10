@@ -1675,9 +1675,6 @@
 			}
 			
 			// Load favorites when tenant/user is available
-			if (state.tenantUrl && state.user?.id && (currentTenantUrl !== state.tenantUrl || currentUserId !== state.user.id)) {
-				loadFavorites();
-			}
 			
 			if (state.isAuthenticated && appItems.length === 0 && !isLoadingApps) {
 				loadAppList();
