@@ -37,6 +37,7 @@
 
 	let searchQuery = $state('');	
 	let searchResults = $state([] as Array<SearchResultItem>);
+	let unfilteredResults = $state([] as Array<SearchResultItem>);
 	let isSearching = $state(false);
 	let isLoadingApps = $state(false);
 	let isLoadingAppData = $state(false);
@@ -461,10 +462,6 @@
 					return favorites.has(favoriteKey);
 				});
 			}
-			
-			// Update total count to reflect all applied filters (sheet state and favorites)
-			// This ensures the count is accurate whether filters are on or off
-			totalSearchResults = results.length;
 
 			searchResults = results;
 

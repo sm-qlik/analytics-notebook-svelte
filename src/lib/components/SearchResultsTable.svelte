@@ -571,7 +571,7 @@
 					{@const sheetUrl = result.sheetUrl || result.context?.sheetUrl || null}
 					{@const chartId = result.chartId || obj?.qInfo?.qId || null}
 					{@const chartTitle = result.chartTitle || result.context?.chartTitle || null}
-					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null
+					{@const chartUrl = result.chartUrl || result.context?.chartUrl || null}
 					{@const appId = result.appId || ''}
 					{@const isFavorited = isFavorite(appId, result.path)}
 					{@const name = result.name || []}
