@@ -602,7 +602,7 @@
 		const maxPages = 100; // Safety limit to prevent infinite loops
 		
 		// First request
-		let response = await items.getItems({ resourceType: 'app[directQuery,]', limit: 100 });
+		let response = await items.getItems({ resourceType: 'app[directQuery,]', limit: 100 }, { noCache: true });
 		if (response.status !== 200) {
 			throw new Error(`Failed to get items: ${response.status}`);
 		}

@@ -78,7 +78,7 @@
 			try {
 				// Try to get items to check if already authenticated
 				// If not authenticated, the API will automatically redirect to OAuth
-				const response = await items.getItems({ resourceType: 'app[directQuery,]' });
+				const response = await items.getItems({ resourceType: 'app[directQuery,]' },{ noCache: true });
 				
 				if (response.status === 200) {
 					// Already authenticated, proceed
@@ -108,7 +108,7 @@
 		const { items, users, tenants } = qlikApi;
 		
 		// Get items
-		const response = await items.getItems({ resourceType: 'app[directQuery,]' });
+		const response = await items.getItems({ resourceType: 'app[directQuery,]' },{ noCache: true });
 		
 		if (response.status !== 200) {
 			throw new Error(`Authentication failed with status: ${response.status}`);
