@@ -412,8 +412,6 @@
 	// Track if a search is currently in progress to prevent race conditions
 	let isSearchInProgress = false;
 	let pendingSearchRequest = false;
-	
-
 	/**
 	 * Perform search using IndexedDB - much more memory efficient for large datasets
 	 * This function is debounced and prevents concurrent searches to avoid juddering
