@@ -412,7 +412,6 @@
 	// Track if a search is currently in progress to prevent race conditions
 	let isSearchInProgress = false;
 	let pendingSearchRequest = false;
-
 	/**
 	 * Perform search using IndexedDB - much more memory efficient for large datasets
 	 * This function is debounced and prevents concurrent searches to avoid juddering
@@ -1037,6 +1036,9 @@
 				const batch = appsToLoad.slice(i, i + CONCURRENCY_LIMIT);
 				const results = await Promise.all(batch.map((appItem: AppItem) => processApp(appItem)));
 				
+				
+
+
 				// Count failed apps in this batch
 				const batchFailed = results.filter(r => r === 'error').length;
 				if (batchFailed > 0) {
@@ -1082,6 +1084,7 @@
 			console.error('Failed to load app data:', err);
 		} finally {
 			isLoadingAppData = false;
+		
 			// Ensure progress reflects actual loaded apps
 			loadingProgress = { 
 				current: qlikApps.length, 
@@ -1507,10 +1510,25 @@
 			loadingProgressStore.setProgress({
 				hasNewData: true
 			});
+			
+			// Trigger search during loading when new apps are added (incremental updates)
+			// Also trigger when loading completes
+			if (qlikApps.length > 0) {
+				// Clear any pending timeout
+				if (loadingCompletionTimeout) {
+					clearTimeout(loadingCompletionTimeout);
+				}
+				
+				// Debounce the refresh to prevent juddering when multiple apps finish loading rapidly
+				loadingCompletionTimeout = setTimeout(() => {
+					refreshTableInternal();
+					loadingCompletionTimeout = null;
+				}, 100); // Small delay to batch rapid updates
+			}
 		}
 		
-		// Only trigger search when loading transitions from true to false (completion)
-		// This prevents loops during loading
+		// Also trigger search when loading transitions from true to false (completion)
+		// This handles the case where apps were added but the effect didn't catch the change
 		if (previousLoadingState && !loading && hasNewDataPending && qlikApps.length > 0) {
 			// Clear any pending timeout
 			if (loadingCompletionTimeout) {
