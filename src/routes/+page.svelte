@@ -10,6 +10,7 @@
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
   import { base } from '$app/paths';
+  import { appCache, getCacheKey } from '$lib/stores/app-cache';
   
   const version = import.meta.env.APP_VERSION;
   
@@ -166,6 +167,22 @@
       // Reload the page to ensure clean state (respecting base path)
       window.location.href = base || '/';
     }
+  }
+
+  async function handleLogoutAndClearData() {
+    // Clear cached data for the current tenant before logging out
+    if (authState?.tenantUrl && authState?.user?.id) {
+      try {
+        const cacheKey = getCacheKey(authState.tenantUrl, authState.user.id);
+        await appCache.deleteTenantData(cacheKey);
+        console.log('Cleared cached data for tenant:', authState.tenantUrl);
+      } catch (err) {
+        console.error('Failed to clear cached data:', err);
+        // Continue with logout even if clearing cache fails
+      }
+    }
+    // Proceed with normal logout
+    handleLogout();
   }
   
   // Close tools dropdown when clicking outside
@@ -339,6 +356,7 @@
 						userName={authState.user?.name}
 						onLogout={handleLogout}
 						onManageData={() => isManageDataOpen = true}
+						onLogoutAndClearData={handleLogoutAndClearData}
 					/>
 				</div>
 			{/if}
