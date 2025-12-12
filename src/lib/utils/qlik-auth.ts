@@ -5,11 +5,22 @@
 
 // Domain to Client ID mapping for Qlik Cloud regions
 export const DOMAIN_CLIENT_MAPPING: Record<string, string> = {
-	'us.qlikcloud.com': '1803ea5e323590d73883f4416c111e53',
+	// Prod & test
 	'eu.qlikcloud.com': '96200981eed552c0af73e18d85ab6b09',
 	'us.qlik-stage.com': '1575c7dd959e43dc4b31bea208371b91',
 	'eu.qlik-stage.com': '099e42704f4dc6b8d31c23f9c7444a1a',
-	//'us.qlikcloud.com': 'ad1af63f7850092f2199f879ed26ed5a' //Scott's Tenant sifx9helisbxc3f.us.qlikcloud.com
+	// Prod only
+	'de.qlikcloud.com': '019b125fdf4cd13a07ec95d911f7547d',
+	'sg.qlikcloud.com': '019b1262e0ee9508b5c721f590a0a88f',
+	'ap.qlikcloud.com': '019b12663d78118b1ff459d28b7ea324',
+	'jp.qlikcloud.com': '019b12677dfbd3fae5e8d135acc437b4',
+	'in.qlikcloud.com': '019b1268afd43c066103a70948ba41ee',
+	'ae.qlikcloud.com': '019b126a645f3c7a846a0dc1d20d21f8',
+	'br.qlikcloud.com': '019b126bae10f876e423f4c24bca8cf5',
+	'fr.qlikcloud.com': '019b126ee8ee65f94900d9a007f8f898',
+	'il.qlikcloud.com': '019b12640bc556c91fbb82c904e0a529',
+	'uk.qlikcloud.com': '019b1261abba98ba92ba818594c65500',
+	'us.qlikcloud.com': '1803ea5e323590d73883f4416c111e53',
 };
 
 export interface TenantInfo {
