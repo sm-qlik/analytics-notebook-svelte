@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-describe('Main Page Help Integration', () => {
+/**
+ * Integration tests for help functionality across components
+ * Tests the integration between +page.svelte, HelpModal, and Login components
+ */
+describe('Help Integration (Page + Components)', () => {
 	beforeEach(() => {
 		// Mock window and document
 		global.window = {
