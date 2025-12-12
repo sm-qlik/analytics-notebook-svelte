@@ -405,17 +405,65 @@ let { results, totalResults, currentPage, totalPages, onPageChange, onNextPage, 
 				clearSelectionSearch();
 			}
 		};
+		const onMouseUp = (e: MouseEvent) => {
+			// Suppress Edge's text selection menu when text is selected inside table cells
+			const container = tableSelectionScopeEl;
+			if (!container) return;
+			
+			const sel = window.getSelection();
+			if (sel && sel.toString().length > 0) {
+				// Check if selection is inside table cells
+				const anchorNode = sel.anchorNode as Node | null;
+				const focusNode = sel.focusNode as Node | null;
+				const containsNode = (node: Node | null) => {
+					if (!node) return false;
+					const el = (node as any).nodeType === 1 ? (node as HTMLElement) : (node as any).parentElement as HTMLElement | null;
+					if (!el) return false;
+					// Check if the element or any parent is a table cell (td or th)
+					let current: HTMLElement | null = el;
+					while (current) {
+						if (current.tagName === 'TD' || current.tagName === 'TH') {
+							// Found a table cell, now check if it's within our table container
+							return container.contains(current);
+						}
+						current = current.parentElement;
+					}
+					return false;
+				};
+				
+				if (containsNode(anchorNode) || containsNode(focusNode)) {
+					// Selection is inside table cells, suppress Edge's text selection menu
+					// Prevent default to stop Edge's menu from appearing
+					e.preventDefault();
+					e.stopPropagation();
+					// Use a small timeout to ensure Edge's menu doesn't appear
+					// Edge shows the menu after mouseup, so we need to prevent it asynchronously
+					setTimeout(() => {
+						const currentSel = window.getSelection();
+						if (currentSel && currentSel.toString().length > 0) {
+							// Briefly blur any focused element to prevent menu
+							const activeEl = document.activeElement as HTMLElement | null;
+							if (activeEl && activeEl.blur) {
+								activeEl.blur();
+							}
+						}
+					}, 0);
+				}
+			}
+		};
 		document.addEventListener('selectionchange', onSelectionChange);
 		window.addEventListener('scroll', onScroll, true);
 		window.addEventListener('resize', onScroll);
 		document.addEventListener('pointerdown', onPointerDown, true);
 		document.addEventListener('keydown', onKeyDown, true);
+		document.addEventListener('mouseup', onMouseUp, true);
 		return () => {
 			document.removeEventListener('selectionchange', onSelectionChange);
 			window.removeEventListener('scroll', onScroll, true);
 			window.removeEventListener('resize', onScroll);
 			document.removeEventListener('pointerdown', onPointerDown, true);
 			document.removeEventListener('keydown', onKeyDown, true);
+			document.removeEventListener('mouseup', onMouseUp, true);
 		};
 	});
 
