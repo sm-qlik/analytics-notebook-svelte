@@ -216,7 +216,7 @@
 					required
 					bind:value={tenantUrl}
 					onkeydown={handleKeydown}
-					placeholder="your-tenant.us.qlikcloud.com or your-tenant.eu.qlikcloud.com"
+					placeholder="your-tenant.us.qlikcloud.com"
 					class="appearance-none rounded-lg relative block w-full px-3 py-3 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 					disabled={isLoading}
 				/>
