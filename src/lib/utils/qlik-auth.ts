@@ -11,6 +11,7 @@ export const DOMAIN_CLIENT_MAPPING: Record<string, string> = {
 	'eu.qlik-stage.com': '099e42704f4dc6b8d31c23f9c7444a1a',
 	// Prod only
 	'de.qlikcloud.com': '019b125fdf4cd13a07ec95d911f7547d',
+	'se.qlikcloud.com': '019b1281053f3d7cf99eed3c8a13c78d',
 	'sg.qlikcloud.com': '019b1262e0ee9508b5c721f590a0a88f',
 	'ap.qlikcloud.com': '019b12663d78118b1ff459d28b7ea324',
 	'jp.qlikcloud.com': '019b12677dfbd3fae5e8d135acc437b4',
