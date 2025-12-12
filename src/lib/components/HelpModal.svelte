@@ -5,6 +5,9 @@
 		onClose: () => void;
 	}
 
+	// Delay before scrolling to ensure modal content is fully rendered
+	const SCROLL_DELAY_MS = 100;
+
 	let { isOpen, initialSection, onClose }: Props = $props();
 
 	let activeSection = $state<string>(initialSection || 'overview');
@@ -18,7 +21,7 @@
 				if (element) {
 					element.scrollIntoView({ behavior: 'smooth', block: 'start' });
 				}
-			}, 100);
+			}, SCROLL_DELAY_MS);
 		}
 	});
 
