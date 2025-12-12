@@ -4,6 +4,12 @@
 	import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
 	import ManageDataModal from '$lib/components/ManageDataModal.svelte';
 	
+	interface Props {
+		onOpenHelp?: (section?: string) => void;
+	}
+	
+	let { onOpenHelp }: Props = $props();
+	
 	let tenantUrl = $state('');
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
@@ -189,6 +195,15 @@
 			<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
 				Enter your Qlik Cloud tenant URL to get started
 			</p>
+			{#if onOpenHelp}
+				<button
+					type="button"
+					onclick={() => onOpenHelp('data-storage')}
+					class="mt-3 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline transition-colors"
+				>
+					Learn about how this app handles your data
+				</button>
+			{/if}
 		</div>
 		
 		<form class="mt-8 space-y-6" onsubmit={handleSubmit}>
