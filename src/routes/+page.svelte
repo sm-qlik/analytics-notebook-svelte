@@ -3,6 +3,7 @@
   import Search from '$lib/components/Search.svelte';
   import Login from '$lib/components/Login.svelte';
   import ManageDataModal from '$lib/components/ManageDataModal.svelte';
+  import HelpModal from '$lib/components/HelpModal.svelte';
   import ProfileTile from '$lib/components/ProfileTile.svelte';
   import DeprecatedChartFinder from '$lib/components/DeprecatedChartFinder.svelte';
   import HeaderProgressIndicator from '$lib/components/HeaderProgressIndicator.svelte';
@@ -10,6 +11,7 @@
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
   import { base } from '$app/paths';
+  import { appCache, getCacheKey } from '$lib/stores/app-cache';
   
   const version = import.meta.env.APP_VERSION;
   
@@ -17,6 +19,8 @@
   let isCheckingAuth = $state(true);
   let authState = $state<any>(null);
   let isManageDataOpen = $state(false);
+  let isHelpOpen = $state(false);
+  let helpInitialSection = $state<string | undefined>(undefined);
   let refreshTrigger = $state(0);
   let activeView = $state<'search' | 'deprecated-chart-finder'>('search');
   let isToolsDropdownOpen = $state(false);
@@ -166,6 +170,22 @@
       // Reload the page to ensure clean state (respecting base path)
       window.location.href = base || '/';
     }
+  }
+
+  async function handleLogoutAndClearData() {
+    // Clear cached data for the current tenant before logging out
+    if (authState?.tenantUrl && authState?.user?.id) {
+      try {
+        const cacheKey = getCacheKey(authState.tenantUrl, authState.user.id);
+        await appCache.deleteTenantData(cacheKey);
+        console.log('Cleared cached data for tenant:', authState.tenantUrl);
+      } catch (err) {
+        console.error('Failed to clear cached data:', err);
+        // Continue with logout even if clearing cache fails
+      }
+    }
+    // Proceed with normal logout
+    handleLogout();
   }
   
   // Close tools dropdown when clicking outside
@@ -330,18 +350,39 @@
 				{/if}
 			</div>
 			
-			{#if isAuthenticated && authState}
-				<div class="flex items-center gap-3">
+			<!-- Right side: Progress indicator (when authenticated), Help button (always), Profile (when authenticated) -->
+			<div class="flex items-center gap-3">
+				{#if isAuthenticated && authState}
 					<HeaderProgressIndicator />
+				{/if}
+				
+				<!-- Help Button - Always visible for both authenticated and unauthenticated users -->
+				<button
+					type="button"
+					onclick={() => {
+						helpInitialSection = undefined;
+						isHelpOpen = true;
+					}}
+					class="flex items-center justify-center w-8 h-8 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+					aria-label="Help"
+					title="Help & Information"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+				</button>
+				
+				{#if isAuthenticated && authState}
 					<ProfileTile
 						tenantName={authState.tenantName}
 						tenantUrl={authState.tenantUrl}
 						userName={authState.user?.name}
 						onLogout={handleLogout}
 						onManageData={() => isManageDataOpen = true}
+						onLogoutAndClearData={handleLogoutAndClearData}
 					/>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		</div>
 	</div>
 </header>
@@ -371,7 +412,10 @@
 		</div>
 	</main>
 {:else}
-	<Login />
+	<Login onOpenHelp={(section?: string) => {
+		helpInitialSection = section;
+		isHelpOpen = true;
+	}} />
 {/if}
 
 <!-- Footer -->
@@ -393,4 +437,11 @@
 	onClose={() => isManageDataOpen = false}
 	onDataDeleted={handleDataDeleted}
 	onCheckForUpdates={handleCheckForUpdates}
+/>
+
+<!-- Help Modal -->
+<HelpModal
+	isOpen={isHelpOpen}
+	initialSection={helpInitialSection}
+	onClose={() => isHelpOpen = false}
 />
