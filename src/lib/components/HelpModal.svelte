@@ -129,6 +129,11 @@
 								</ul>
 
 								<h4 class="text-lg font-medium text-gray-900 dark:text-white mt-6 mb-3">Getting Started</h4>
+								<div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+									<p class="text-sm text-gray-700 dark:text-gray-300">
+										<strong>Note:</strong> The first time this application is used on a tenant, a Tenant Administrator will need to make the initial request to authorize the application.
+									</p>
+								</div>
 								<ol class="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300 mb-4">
 									<li>Enter your Qlik Cloud tenant URL (e.g., <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">your-tenant.us.qlikcloud.com</code>)</li>
 									<li>Sign in with your Qlik Cloud credentials</li>
