@@ -2,11 +2,13 @@
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth';
 	import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
+	import ManageDataModal from '$lib/components/ManageDataModal.svelte';
 	
 	let tenantUrl = $state('');
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
 	let tenantHistory = $state<string[]>([]);
+	let isManageDataOpen = $state(false);
 	
 	onMount(() => {
 		// Load tenant history from localStorage
@@ -157,9 +159,28 @@
 		e.preventDefault();
 		handleLogin();
 	}
+
+	function handleDataDeleted(cacheKey: string, isCurrentTenant: boolean) {
+		// If the deleted data was for the current tenant, we don't need to do anything
+		// since the user isn't logged in yet
+	}
 </script>
 
-<div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 py-12 px-[10px]">
+<div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 py-12 px-[10px] relative">
+	<!-- Manage Data Button - Top Right -->
+	<div class="absolute top-4 right-4">
+		<button
+			type="button"
+			onclick={() => isManageDataOpen = true}
+			class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+			aria-label="Manage cached data"
+		>
+			<svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+			</svg>
+			Manage Data
+		</button>
+	</div>
 	<div class="max-w-md w-full space-y-8">
 		<div class="text-center">
 			<h2 class="mt-6 text-3xl font-extrabold text-gray-900 dark:text-white">
@@ -239,4 +260,13 @@
 		</form>
 	</div>
 </div>
+
+<!-- Manage Data Modal -->
+<ManageDataModal
+	isOpen={isManageDataOpen}
+	currentTenantUrl={undefined}
+	currentUserId={undefined}
+	onClose={() => isManageDataOpen = false}
+	onDataDeleted={handleDataDeleted}
+/>
 
