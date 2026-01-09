@@ -2,7 +2,6 @@
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { environmentsStore } from '$lib/stores/environments';
-	import { workflowsStore } from '$lib/stores/workflows';
 	import { authStore } from '$lib/stores/auth';
 	import { loadQlikAPI, configureQlikAuthOnce } from '$lib/utils/qlik-auth';
 	import EnvironmentCard from '$lib/components/EnvironmentCard.svelte';
@@ -33,7 +32,6 @@
 	}
 
 	let environments = $state<Environment[]>([]);
-	let workflows = $state<any[]>([]);
 	let spaces = $state<{ id: string; name: string }[]>([]);
 	let isLoading = $state(true);
 	let showCreateModal = $state(false);
@@ -44,7 +42,6 @@
 	let formDescription = $state('');
 	let formPurpose = $state<EnvironmentPurpose>('authoring');
 	let formColor = $state('#3b82f6');
-	let formWorkflowId = $state('');
 
 	const colors = [
 		'#3b82f6', // Blue
@@ -65,7 +62,6 @@
 		formDescription = '';
 		formPurpose = 'authoring';
 		formColor = '#3b82f6';
-		formWorkflowId = workflows[0]?.id || '';
 		editingEnvironment = null;
 	}
 
@@ -80,7 +76,6 @@
 		formDescription = env.description || '';
 		formPurpose = env.purpose;
 		formColor = env.color;
-		formWorkflowId = env.workflowId || '';
 		showCreateModal = true;
 	}
 
@@ -97,8 +92,7 @@
 				name: formName.trim(),
 				description: formDescription.trim() || undefined,
 				purpose: formPurpose,
-				color: formColor,
-				workflowId: formWorkflowId || undefined
+				color: formColor
 			});
 		} else {
 			environmentsStore.create({
@@ -107,8 +101,7 @@
 				purpose: formPurpose,
 				color: formColor,
 				variables: [],
-				spaceIds: [],
-				workflowId: formWorkflowId || undefined
+				spaceIds: []
 			});
 		}
 
@@ -161,20 +154,12 @@
 			environments = envs;
 		});
 
-		const unsubWf = workflowsStore.subscribe(wfs => {
-			workflows = wfs;
-			if (!formWorkflowId && wfs.length > 0) {
-				formWorkflowId = wfs[0].id;
-			}
-		});
-
 		loadSpaces().finally(() => {
 			isLoading = false;
 		});
 
 		return () => {
 			unsubEnv();
-			unsubWf();
 		};
 	});
 </script>
@@ -354,25 +339,6 @@
 							{/each}
 						</div>
 					</div>
-
-					<!-- Workflow -->
-					{#if workflows.length > 0}
-						<div>
-							<label for="env-workflow" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-								Workflow
-							</label>
-							<select
-								id="env-workflow"
-								bind:value={formWorkflowId}
-								class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent"
-							>
-								<option value="">No workflow</option>
-								{#each workflows as workflow}
-									<option value={workflow.id}>{workflow.name}</option>
-								{/each}
-							</select>
-						</div>
-					{/if}
 
 					<!-- Actions -->
 					<div class="flex justify-end gap-3 pt-4">

@@ -22,8 +22,6 @@ const MOCK_ENVIRONMENTS: Environment[] = [
 			{ key: 'DB_CONNECTION', value: '********', isSecret: true, description: 'Database connection string' }
 		],
 		spaceIds: [], // Will be populated when spaces are assigned
-		workflowId: 'workflow-main',
-		workflowOrder: 0,
 		createdAt: '2024-01-15T10:00:00Z',
 		updatedAt: '2024-01-20T14:30:00Z'
 	},
@@ -31,7 +29,7 @@ const MOCK_ENVIRONMENTS: Environment[] = [
 		id: 'env-stage',
 		name: 'Staging',
 		description: 'Pre-production environment for UAT and final testing',
-		purpose: 'authoring',
+		purpose: 'production', // Production type - no authoring happens here
 		color: '#f59e0b', // Amber
 		variables: [
 			{ key: 'API_ENDPOINT', value: 'https://stage-api.example.com', isSecret: false, description: 'API endpoint URL' },
@@ -39,8 +37,6 @@ const MOCK_ENVIRONMENTS: Environment[] = [
 			{ key: 'DB_CONNECTION', value: '********', isSecret: true, description: 'Database connection string' }
 		],
 		spaceIds: [],
-		workflowId: 'workflow-main',
-		workflowOrder: 1,
 		createdAt: '2024-01-15T10:00:00Z',
 		updatedAt: '2024-01-20T14:30:00Z'
 	},
@@ -56,8 +52,6 @@ const MOCK_ENVIRONMENTS: Environment[] = [
 			{ key: 'DB_CONNECTION', value: '********', isSecret: true, description: 'Database connection string' }
 		],
 		spaceIds: [],
-		workflowId: 'workflow-main',
-		workflowOrder: 2,
 		createdAt: '2024-01-15T10:00:00Z',
 		updatedAt: '2024-01-20T14:30:00Z'
 	}
