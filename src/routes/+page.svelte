@@ -1,48 +1,30 @@
 <script lang="ts">
   import Logo from './Logo.svelte';
-  import Search from '$lib/components/Search.svelte';
   import Login from '$lib/components/Login.svelte';
-  import ManageDataModal from '$lib/components/ManageDataModal.svelte';
+  import ResourceCatalog from '$lib/components/ResourceCatalog.svelte';
   import HelpModal from '$lib/components/HelpModal.svelte';
   import ProfileTile from '$lib/components/ProfileTile.svelte';
-  import DeprecatedChartFinder from '$lib/components/DeprecatedChartFinder.svelte';
-  import HeaderProgressIndicator from '$lib/components/HeaderProgressIndicator.svelte';
   import { authStore } from '$lib/stores/auth';
   import { onMount } from 'svelte';
   import { parseTenantUrl, createAuthConfig, loadQlikAPI } from '$lib/utils/qlik-auth';
   import { base } from '$app/paths';
-  import { appCache, getCacheKey } from '$lib/stores/app-cache';
+  import { goto } from '$app/navigation';
+  
+  type NavItem = 'catalog' | 'environments' | 'workflows' | 'projects';
+  let activeNav = $state<NavItem>('catalog');
   
   const version = import.meta.env.APP_VERSION;
   
   let isAuthenticated = $state(false);
   let isCheckingAuth = $state(true);
   let authState = $state<any>(null);
-  let isManageDataOpen = $state(false);
   let isHelpOpen = $state(false);
   let helpInitialSection = $state<string | undefined>(undefined);
-  let refreshTrigger = $state(0);
-  let activeView = $state<'search' | 'deprecated-chart-finder'>('search');
-  let isToolsDropdownOpen = $state(false);
-  let toolsDropdownRef = $state<HTMLDivElement | null>(null);
-  let toolsButtonRef = $state<HTMLButtonElement | null>(null);
-  
-  function handleDataDeleted(cacheKey: string, isCurrentTenant: boolean) {
-    if (isCurrentTenant) {
-      // Trigger refresh - will detect cache is empty and reload everything
-      refreshTrigger++;
-    }
-  }
-  
-  function handleCheckForUpdates() {
-    // Trigger a check for updates (only loads new/changed apps)
-    refreshTrigger++;
-  }
   
   let pageTitle = $derived(
     authState?.isAuthenticated && authState?.tenantName
-      ? `${authState.tenantName} - Analytics Notebook`
-      : 'Analytics Notebook'
+      ? `${authState.tenantName} - QCS Environments`
+      : 'QCS Environments'
   );
   
   onMount(() => {
@@ -79,7 +61,7 @@
         
         // Fallback to localStorage if not in store
         if (!currentTenantUrl) {
-          currentTenantUrl = localStorage.getItem('currentTenantUrl');
+          currentTenantUrl = localStorage.getItem('qcs-env-tenant-url');
         }
         
         // Compare tenants (normalized)
@@ -91,10 +73,10 @@
           // Logout from current tenant
           authStore.logout();
           // Clear currentTenantUrl from localStorage
-          localStorage.removeItem('currentTenantUrl');
+          localStorage.removeItem('qcs-env-tenant-url');
           // Clear any Qlik API tokens
-          localStorage.removeItem('qlik-access-token');
-          sessionStorage.removeItem('qlik-access-token');
+          localStorage.removeItem('qcs-env-access-token');
+          sessionStorage.removeItem('qcs-env-access-token');
           // Clear any other Qlik-related storage
           Object.keys(localStorage).forEach(key => {
             if (key.startsWith('qlik-') || key.startsWith('@qlik/')) {
@@ -118,7 +100,7 @@
       }
       
       // Now check for existing session (only if no tenant parameter or same tenant)
-      const storedTenantUrl = localStorage.getItem('currentTenantUrl');
+      const storedTenantUrl = localStorage.getItem('qcs-env-tenant-url');
       if (storedTenantUrl) {
         // Check if we just returned from OAuth callback
         const isReturningFromOAuth = document.referrer?.includes('/oauth-callback') || 
@@ -141,12 +123,12 @@
     authStore.logout();
     if (typeof window !== 'undefined') {
       // Clear all Qlik-related storage
-      localStorage.removeItem('currentTenantUrl');
-      // Note: We preserve qlik-tenant-history so users can see recent tenants after logout
+      localStorage.removeItem('qcs-env-tenant-url');
+      // Note: We preserve qcs-env-tenant-history so users can see recent tenants after logout
       
       // Clear all Qlik-related localStorage keys (except tenant history)
       Object.keys(localStorage).forEach(key => {
-        if ((key.startsWith('qlik-') || key.startsWith('@qlik/')) && key !== 'qlik-tenant-history') {
+        if ((key.startsWith('qlik-') || key.startsWith('@qlik/')) && key !== 'qcs-env-tenant-history') {
           localStorage.removeItem(key);
         }
       });
@@ -172,53 +154,6 @@
     }
   }
 
-  async function handleLogoutAndClearData() {
-    // Clear cached data for the current tenant before logging out
-    if (authState?.tenantUrl && authState?.user?.id) {
-      try {
-        const cacheKey = getCacheKey(authState.tenantUrl, authState.user.id);
-        await appCache.deleteTenantData(cacheKey);
-        console.log('Cleared cached data for tenant:', authState.tenantUrl);
-      } catch (err) {
-        console.error('Failed to clear cached data:', err);
-        // Continue with logout even if clearing cache fails
-      }
-    }
-    // Proceed with normal logout
-    handleLogout();
-  }
-  
-  // Close tools dropdown when clicking outside
-  $effect(() => {
-    if (!isToolsDropdownOpen) return;
-
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        toolsDropdownRef &&
-        toolsButtonRef &&
-        !toolsDropdownRef.contains(event.target as Node) &&
-        !toolsButtonRef.contains(event.target as Node)
-      ) {
-        isToolsDropdownOpen = false;
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  });
-
-  function toggleToolsDropdown() {
-    isToolsDropdownOpen = !isToolsDropdownOpen;
-  }
-
-  function selectTool(tool: 'deprecated-chart-finder') {
-    activeView = tool;
-    isToolsDropdownOpen = false;
-  }
-
   async function checkExistingSession(tenantUrl: string) {
     try {
       isCheckingAuth = true;
@@ -235,7 +170,7 @@
         setTimeout(() => reject(new Error('Authentication check timeout')), 10000)
       );
       
-      const itemsPromise = items.getItems({ resourceType: 'app[directQuery,]' }, { noCache: true });
+      const itemsPromise = items.getItems({ resourceType: 'app[directQuery,]' }, { noCache: false });
       const response = await Promise.race([itemsPromise, timeoutPromise]) as any;
       
       if (response && response.status === 200) {
@@ -261,19 +196,20 @@
           console.warn('Failed to get user info:', e);
         }
         
-        authStore.setAuthenticated(tenantUrl, tenantName, user, response.data || []);
+        // Don't pass items - just set authenticated state
+        authStore.setAuthenticated(tenantUrl, tenantName, user, []);
         isCheckingAuth = false;
       } else {
         // Session expired, clear stored tenant
         console.warn('Authentication check failed with status:', response?.status);
-        localStorage.removeItem('currentTenantUrl');
+        localStorage.removeItem('qcs-env-tenant-url');
         isCheckingAuth = false;
       }
     } catch (err: any) {
       console.warn('Failed to restore session:', err);
       // If it's an auth error, clear and show login
       if (err.message?.includes('401') || err.message?.includes('403') || err.message?.includes('unauthorized') || err.message?.includes('timeout')) {
-        localStorage.removeItem('currentTenantUrl');
+        localStorage.removeItem('qcs-env-tenant-url');
       }
       isCheckingAuth = false;
     }
@@ -285,77 +221,53 @@
 </svelte:head>
 
 <header class="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800">
-	<div class="px-[10px] max-w-full">
+	<div class="px-4 max-w-full">
 		<div class="flex justify-between items-center h-16">
 			<!-- Logo and Navigation -->
-			<div class="flex items-center pl-4 gap-6">
+			<div class="flex items-center gap-6">
 				<div class="flex-shrink-0 relative">
 					<div class="flex items-center">
 						<Logo />
-						<h1 class="text-xl font-semibold text-gray-600 dark:text-gray-400">Analytics Notebook</h1>
+						<h1 class="text-xl font-semibold text-gray-600 dark:text-gray-400">QCS Environments</h1>
 					</div>
 				</div>
 				
 				{#if isAuthenticated && authState}
 					<!-- Navigation Items -->
-					<nav class="flex items-center gap-4">
+					<nav class="flex items-center gap-1">
 						<button
-							onclick={() => activeView = 'search'}
-							class="px-3 py-2 text-sm font-medium transition-colors {activeView === 'search'
-								? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
-								: 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}"
+							onclick={() => activeNav = 'catalog'}
+							class="px-3 py-2 text-sm font-medium transition-colors rounded-lg
+								{activeNav === 'catalog' 
+									? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20' 
+									: 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'}"
 						>
-							Search
+							Catalog
 						</button>
-						
-						<!-- Tools Dropdown -->
-						<div class="relative">
-							<button
-								bind:this={toolsButtonRef}
-								type="button"
-								onclick={toggleToolsDropdown}
-								class="px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 {activeView === 'deprecated-chart-finder'
-									? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
-									: 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}"
-								aria-expanded={isToolsDropdownOpen}
-								aria-haspopup="true"
-							>
-								Tools
-								<svg
-									class="w-4 h-4 transition-transform {isToolsDropdownOpen ? 'rotate-180' : ''}"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-								</svg>
-							</button>
-							
-							{#if isToolsDropdownOpen}
-								<div
-									bind:this={toolsDropdownRef}
-									class="absolute left-0 mt-2 min-w-56 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden"
-								>
-									<button
-										type="button"
-										onclick={() => selectTool('deprecated-chart-finder')}
-										class="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors {activeView === 'deprecated-chart-finder' ? 'bg-gray-50 dark:bg-gray-700' : ''}"
-									>
-										Deprecated Chart Finder
-									</button>
-								</div>
-							{/if}
-						</div>
+						<button
+							onclick={() => goto(`${base}/environments`)}
+							class="px-3 py-2 text-sm font-medium transition-colors rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+						>
+							Environments
+						</button>
+						<button
+							onclick={() => goto(`${base}/workflows`)}
+							class="px-3 py-2 text-sm font-medium transition-colors rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+						>
+							Workflows
+						</button>
+						<button
+							onclick={() => goto(`${base}/projects`)}
+							class="px-3 py-2 text-sm font-medium transition-colors rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+						>
+							Projects
+						</button>
 					</nav>
 				{/if}
 			</div>
 			
-			<!-- Right side: Progress indicator (when authenticated), Help button (always), Profile (when authenticated) -->
+			<!-- Right side: Help button (always), Profile (when authenticated) -->
 			<div class="flex items-center gap-3">
-				{#if isAuthenticated && authState}
-					<HeaderProgressIndicator />
-				{/if}
-				
 				<!-- Help Button - Always visible for both authenticated and unauthenticated users -->
 				<button
 					type="button"
@@ -378,8 +290,6 @@
 						tenantUrl={authState.tenantUrl}
 						userName={authState.user?.name}
 						onLogout={handleLogout}
-						onManageData={() => isManageDataOpen = true}
-						onLogoutAndClearData={handleLogoutAndClearData}
 					/>
 				{/if}
 			</div>
@@ -389,27 +299,15 @@
 
 <!-- Main Content -->
 {#if isCheckingAuth}
-	<main class="flex-1 px-[10px] py-8 w-full flex items-center justify-center max-w-full">
+	<main class="flex-1 px-4 py-8 w-full flex items-center justify-center max-w-full">
 		<div class="text-center">
-			<div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+			<div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
 			<p class="mt-4 text-sm text-gray-600 dark:text-gray-400">Checking authentication...</p>
 		</div>
 	</main>
 {:else if isAuthenticated}
-	<main class="flex-1 px-[10px] py-8 w-full flex flex-col min-h-0 max-w-full">
-		<!-- Content -->
-		{#if activeView === 'search'}
-			<!-- Search Component -->
-			<Search {refreshTrigger} />
-		{:else if activeView === 'deprecated-chart-finder'}
-			<!-- Deprecated Chart Finder Tool -->
-			<DeprecatedChartFinder />
-		{/if}
-		
-		<!-- Template Container -->
-		<div id="templateContainer">
-			<!-- Templates will be loaded here -->
-		</div>
+	<main class="flex-1 w-full flex flex-col min-h-0 max-w-full">
+		<ResourceCatalog />
 	</main>
 {:else}
 	<Login onOpenHelp={(section?: string) => {
@@ -420,24 +318,14 @@
 
 <!-- Footer -->
 <footer class="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-	<div class="px-[10px] py-4 max-w-full">
+	<div class="px-4 py-4 max-w-full">
 		<div class="flex justify-between items-center">
 			<div class="text-sm text-gray-500 dark:text-gray-400">
-				<p>Analytics Notebook v{version}</p>
+				<p>QCS Environments v{version}</p>
 			</div>
 		</div>
 	</div>
 </footer>
-
-<!-- Manage Data Modal -->
-<ManageDataModal
-	isOpen={isManageDataOpen}
-	currentTenantUrl={authState?.tenantUrl}
-	currentUserId={authState?.user?.id}
-	onClose={() => isManageDataOpen = false}
-	onDataDeleted={handleDataDeleted}
-	onCheckForUpdates={handleCheckForUpdates}
-/>
 
 <!-- Help Modal -->
 <HelpModal

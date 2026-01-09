@@ -119,8 +119,8 @@ export function getOAuthRedirectUri(): string {
 		const pathname = window.location.pathname;
 		
 		// Check if pathname starts with the base path
-		if (pathname.startsWith('/analytics-notebook-svelte')) {
-			basePath = '/analytics-notebook-svelte';
+		if (pathname.startsWith('/qcs-environments-poc')) {
+			basePath = '/qcs-environments-poc';
 		}
 		
 		// Construct redirect URI with base path
@@ -170,6 +170,7 @@ export async function loadQlikAPI() {
 	}
 
 	// Load from CDN
+	// @ts-ignore - Dynamic CDN import, types not available at compile time
 	const apiModule = await import('https://cdn.jsdelivr.net/npm/@qlik/api/index.js');
 	
 	// Store for reuse
