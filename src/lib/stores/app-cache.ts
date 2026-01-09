@@ -10,7 +10,7 @@
 
 import { browser } from '$app/environment';
 
-const DB_NAME = 'analytics-notebook-cache';
+const DB_NAME = 'qcs-env-cache';
 const DB_VERSION = 2; // Bumped for new search index store
 const APPS_STORE = 'apps';
 const SEARCH_INDEX_STORE = 'searchIndex';
