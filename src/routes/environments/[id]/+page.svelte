@@ -459,9 +459,9 @@
 {#if showSpaceSelector}
 	<div class="fixed inset-0 z-50 overflow-y-auto">
 		<div class="flex min-h-full items-center justify-center p-4">
-			<div class="fixed inset-0 bg-black/50" onclick={() => showSpaceSelector = false}></div>
+			<div class="fixed inset-0 bg-black/50 z-40" onclick={() => showSpaceSelector = false}></div>
 			
-			<div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
+			<div class="relative z-50 bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
 				<h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Assign Spaces</h2>
 				<p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
 					Select the spaces that should be part of this environment

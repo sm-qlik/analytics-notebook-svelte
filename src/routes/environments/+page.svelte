@@ -236,12 +236,12 @@
 		<div class="flex min-h-full items-center justify-center p-4">
 			<!-- Backdrop -->
 			<div 
-				class="fixed inset-0 bg-black/50 transition-opacity"
+				class="fixed inset-0 bg-black/50 z-40 transition-opacity"
 				onclick={closeModal}
 			></div>
 			
 			<!-- Modal -->
-			<div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
+			<div class="relative z-50 bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
 				<h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">
 					{editingEnvironment ? 'Edit Environment' : 'Create Environment'}
 				</h2>

@@ -233,7 +233,7 @@
 				</div>
 				
 				{#if isAuthenticated && authState}
-					<!-- Navigation Items -->
+					<!-- Navigation Items - Order: Catalog, Projects, Environments, Workflows -->
 					<nav class="flex items-center gap-1">
 						<button
 							onclick={() => activeNav = 'catalog'}
@@ -243,6 +243,12 @@
 									: 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'}"
 						>
 							Catalog
+						</button>
+						<button
+							onclick={() => goto(`${base}/projects`)}
+							class="px-3 py-2 text-sm font-medium transition-colors rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+						>
+							Projects
 						</button>
 						<button
 							onclick={() => goto(`${base}/environments`)}
@@ -255,12 +261,6 @@
 							class="px-3 py-2 text-sm font-medium transition-colors rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
 						>
 							Workflows
-						</button>
-						<button
-							onclick={() => goto(`${base}/projects`)}
-							class="px-3 py-2 text-sm font-medium transition-colors rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
-						>
-							Projects
 						</button>
 					</nav>
 				{/if}

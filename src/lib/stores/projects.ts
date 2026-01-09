@@ -90,6 +90,7 @@ const MOCK_PROJECTS: Project[] = [
 		name: 'Finance Reporting Suite',
 		description: 'Complete finance reporting solution including dashboards, data pipelines, and automated reports',
 		workflowId: 'workflow-main',
+		spaceIds: [], // Will be populated when spaces are assigned
 		resources: [
 			{
 				resourceId: 'app-001',
@@ -130,6 +131,7 @@ const MOCK_PROJECTS: Project[] = [
 		name: 'Sales Analytics Platform',
 		description: 'Sales performance tracking and reporting platform',
 		workflowId: 'workflow-main',
+		spaceIds: [], // Will be populated when spaces are assigned
 		resources: [
 			{
 				resourceId: 'app-002',
@@ -327,6 +329,20 @@ function createProjectsStore() {
 					return {
 						...p,
 						resources: p.resources.filter(r => r.resourceId !== resourceId),
+						updatedAt: new Date().toISOString()
+					};
+				}
+				return p;
+			}));
+		},
+		
+		// Update the spaces assigned to a project
+		updateSpaces: (projectId: string, spaceIds: string[]): void => {
+			update(projects => projects.map(p => {
+				if (p.id === projectId) {
+					return {
+						...p,
+						spaceIds,
 						updatedAt: new Date().toISOString()
 					};
 				}

@@ -150,6 +150,8 @@ export interface Project {
 	name: string;
 	description?: string;
 	workflowId: string;
+	// Spaces assigned to this project - must be from environments in the workflow
+	spaceIds: string[];
 	resources: ProjectResource[];
 	// Optional: Git repository association (for future)
 	gitRepository?: {

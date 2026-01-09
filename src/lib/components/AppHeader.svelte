@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
+	import { get } from 'svelte/store';
 	import Logo from '../../routes/Logo.svelte';
 	import ProfileTile from './ProfileTile.svelte';
 	import HelpModal from './HelpModal.svelte';
@@ -13,7 +14,8 @@
 
 	let { onLogout }: Props = $props();
 
-	let authState = $state<any>(null);
+	// Initialize with current store value to prevent flash
+	let authState = $state<any>(get(authStore));
 	let isHelpOpen = $state(false);
 	let helpInitialSection = $state<string | undefined>(undefined);
 
@@ -27,6 +29,7 @@
 		return currentPath.startsWith(path);
 	}
 
+	// Keep authState in sync with store changes
 	$effect(() => {
 		const unsubscribe = authStore.subscribe(state => {
 			authState = state;
@@ -36,9 +39,9 @@
 
 	const navItems = [
 		{ path: base || '/', label: 'Catalog' },
+		{ path: `${base}/projects`, label: 'Projects' },
 		{ path: `${base}/environments`, label: 'Environments' },
-		{ path: `${base}/workflows`, label: 'Workflows' },
-		{ path: `${base}/projects`, label: 'Projects' }
+		{ path: `${base}/workflows`, label: 'Workflows' }
 	];
 </script>
 

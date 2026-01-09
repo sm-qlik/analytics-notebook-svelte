@@ -248,9 +248,9 @@
 {#if showCreateModal}
 	<div class="fixed inset-0 z-50 overflow-y-auto">
 		<div class="flex min-h-full items-center justify-center p-4">
-			<div class="fixed inset-0 bg-black/50" onclick={closeModal}></div>
+			<div class="fixed inset-0 bg-black/50 z-40" onclick={closeModal}></div>
 			
-			<div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-2xl w-full p-6">
+			<div class="relative z-50 bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-2xl w-full p-6">
 				<h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">
 					{editingWorkflow ? 'Edit Workflow' : 'Create Workflow'}
 				</h2>

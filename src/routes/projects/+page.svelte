@@ -66,6 +66,7 @@
 			name: formName.trim(),
 			description: formDescription.trim() || undefined,
 			workflowId: formWorkflowId,
+			spaceIds: [], // Spaces will be assigned after project creation
 			resources: []
 		});
 
@@ -213,9 +214,9 @@
 {#if showCreateModal}
 	<div class="fixed inset-0 z-50 overflow-y-auto">
 		<div class="flex min-h-full items-center justify-center p-4">
-			<div class="fixed inset-0 bg-black/50" onclick={closeModal}></div>
+			<div class="fixed inset-0 bg-black/50 z-40" onclick={closeModal}></div>
 			
-			<div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
+			<div class="relative z-50 bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
 				<h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">Create Project</h2>
 				
 				<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-5">

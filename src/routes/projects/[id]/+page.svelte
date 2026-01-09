@@ -12,6 +12,7 @@
 	import CommitForm from '$lib/components/CommitForm.svelte';
 	import DependencyGraph from '$lib/components/DependencyGraph.svelte';
 	import ResourceTile from '$lib/components/ResourceTile.svelte';
+	import ResourceCatalog from '$lib/components/ResourceCatalog.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import type { Project, Commit, Workflow, Environment, ProjectResource, Dependency, ResourceType } from '$lib/types';
 	import { getResourceTypeInfo, generateCommitHash } from '$lib/types';
@@ -45,12 +46,16 @@
 	let dependencies = $state<Dependency[]>([]);
 	let isLoading = $state(true);
 	
+	// Space selection
+	let showSpaceSelector = $state(false);
+	let availableSpaces = $state<{ id: string; name: string; type?: string }[]>([]);
+	let selectedSpaceIds = $state<string[]>([]);
+	let isLoadingSpaces = $state(false);
+
 	// Resource selection
 	let showResourceSelector = $state(false);
-	let availableResources = $state<any[]>([]);
-	let selectedResourceIds = $state<Set<string>>(new Set());
-	let spaces = $state<{ id: string; name: string }[]>([]);
-	let isLoadingResources = $state(false);
+	let selectedResourceIds = $state<string[]>([]);
+	let resourceCatalogRef = $state<any>(null);
 
 	// Commit creation
 	let showCommitForm = $state(false);
@@ -107,8 +112,24 @@
 			});
 	});
 
-	async function loadAvailableResources() {
-		isLoadingResources = true;
+	// Get spaces that are available for this project (from workflow's environments)
+	const workflowEnvironmentSpaces = $derived.by(() => {
+		if (!workflow) return new Set<string>();
+		const envIds = workflow.stages.map(s => s.environmentId);
+		const spaceIds = new Set<string>();
+		for (const env of environments) {
+			if (envIds.includes(env.id)) {
+				for (const spaceId of env.spaceIds) {
+					spaceIds.add(spaceId);
+				}
+			}
+		}
+		return spaceIds;
+	});
+
+	// Load spaces from Qlik API
+	async function loadSpaces() {
+		isLoadingSpaces = true;
 		try {
 			let tenantUrl: string | null = null;
 			const unsubscribe = authStore.subscribe(state => {
@@ -120,59 +141,74 @@
 
 			await configureQlikAuthOnce(tenantUrl);
 			const qlikApi = await loadQlikAPI();
-			const { items, spaces: spacesApi } = qlikApi;
+			const { spaces: spacesApi } = qlikApi;
 
-			// Fetch resources (use correct Qlik Cloud API resource type format)
-			const resourceTypes = 'app[script,directQuery,],qvapp,qlikview,dataset[qix-df,qvd,connection_based_dataset],automation[],dataproduct[],note[view,edit,none]';
-			const response = await items.getItems({ resourceType: resourceTypes, limit: 100 });
-			
-			if (response.status === 200) {
-				availableResources = response.data?.data || [];
-			}
-
-			// Fetch spaces
 			if (spacesApi) {
-				const spacesResponse = await spacesApi.getSpaces({ limit: 100 });
-				if (spacesResponse.status === 200) {
-					spaces = (spacesResponse.data?.data || []).map((s: any) => ({
+				const response = await spacesApi.getSpaces({ limit: 100 });
+				if (response.status === 200) {
+					availableSpaces = (response.data?.data || []).map((s: any) => ({
 						id: s.id,
-						name: s.name
+						name: s.name,
+						type: s.type
 					}));
 				}
 			}
 		} catch (err) {
-			console.warn('Failed to load resources:', err);
+			console.warn('Failed to load spaces:', err);
 		} finally {
-			isLoadingResources = false;
+			isLoadingSpaces = false;
 		}
+	}
+
+	function openSpaceSelector() {
+		if (project) {
+			selectedSpaceIds = [...(project.spaceIds || [])];
+		}
+		loadSpaces();
+		showSpaceSelector = true;
+	}
+
+	function toggleSpaceSelection(spaceId: string) {
+		if (selectedSpaceIds.includes(spaceId)) {
+			selectedSpaceIds = selectedSpaceIds.filter(id => id !== spaceId);
+		} else {
+			selectedSpaceIds = [...selectedSpaceIds, spaceId];
+		}
+	}
+
+	function saveSpaceSelection() {
+		if (!project) return;
+		projectsStore.updateSpaces(project.id, selectedSpaceIds);
+		showSpaceSelector = false;
+	}
+
+	// Get space name by ID
+	function getSpaceName(spaceId: string): string {
+		const space = availableSpaces.find(s => s.id === spaceId);
+		return space?.name || spaceId;
 	}
 
 	function openResourceSelector() {
 		if (project) {
-			selectedResourceIds = new Set(project.resources.map(r => r.resourceId));
+			selectedResourceIds = project.resources.map(r => r.resourceId);
 		}
-		loadAvailableResources();
 		showResourceSelector = true;
 	}
 
-	function toggleResourceSelection(resourceId: string) {
-		const newSet = new Set(selectedResourceIds);
-		if (newSet.has(resourceId)) {
-			newSet.delete(resourceId);
-		} else {
-			newSet.add(resourceId);
-		}
-		selectedResourceIds = newSet;
+	function handleResourceSelectionChange(ids: string[]) {
+		selectedResourceIds = ids;
 	}
 
 	function saveResourceSelection() {
-		if (!project) return;
+		if (!project || !resourceCatalogRef) return;
 
 		const currentResourceIds = new Set(project.resources.map(r => r.resourceId));
+		const newResourceIds = new Set(selectedResourceIds);
+		const availableResources = resourceCatalogRef.getResources();
 
 		// Remove unselected resources
 		for (const resourceId of currentResourceIds) {
-			if (!selectedResourceIds.has(resourceId)) {
+			if (!newResourceIds.has(resourceId)) {
 				projectsStore.removeResource(project.id, resourceId);
 			}
 		}
@@ -180,7 +216,7 @@
 		// Add new resources
 		for (const resourceId of selectedResourceIds) {
 			if (!currentResourceIds.has(resourceId)) {
-				const resource = availableResources.find(r => r.resourceId === resourceId);
+				const resource = availableResources.find((r: any) => r.resourceId === resourceId);
 				if (resource) {
 					const projectResource: ProjectResource = {
 						resourceId: resource.resourceId,
@@ -247,7 +283,8 @@
 	function confirmPromotion() {
 		if (!promotingCommit || !workflow) return;
 
-		const currentStage = workflow.stages.find(s => s.environmentId === promotingCommit.currentEnvironmentId);
+		const commit = promotingCommit;
+		const currentStage = workflow.stages.find(s => s.environmentId === commit.currentEnvironmentId);
 		const nextStage = workflow.stages.find(s => s.order === (currentStage?.order ?? -1) + 1);
 
 		if (nextStage) {
@@ -257,17 +294,12 @@
 			});
 			unsubscribe();
 
-			commitsStore.promote(promotingCommit.id, nextStage.environmentId, userName, promotionNotes || undefined);
+			commitsStore.promote(commit.id, nextStage.environmentId, userName, promotionNotes || undefined);
 		}
 
 		showPromotionModal = false;
 		promotingCommit = null;
 		promotionNotes = '';
-	}
-
-	function getSpaceName(spaceId?: string): string | undefined {
-		if (!spaceId) return 'Personal';
-		return spaces.find(s => s.id === spaceId)?.name;
 	}
 
 	onMount(() => {
@@ -280,14 +312,18 @@
 		});
 
 		const unsubWf = workflowsStore.subscribe(wfs => {
-			if (project) {
-				workflow = wfs.find(w => w.id === project.workflowId) || null;
+			const proj = project;
+			if (proj) {
+				workflow = wfs.find(w => w.id === proj.workflowId) || null;
 			}
 		});
 
 		const unsubEnv = environmentsStore.subscribe(envs => {
 			environments = envs;
 		});
+
+		// Load spaces to display names
+		loadSpaces();
 
 		const unsubDeps = dependenciesStore.subscribe(deps => {
 			dependencies = deps;
@@ -382,8 +418,63 @@
 			</div>
 
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				<!-- Left Column: Resources & Dependencies -->
+				<!-- Left Column: Spaces, Resources & Dependencies -->
 				<div class="lg:col-span-2 space-y-6">
+					<!-- Spaces Section -->
+					<div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+						<div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+							<div>
+								<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Spaces</h2>
+								<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									{(project.spaceIds || []).length} spaces assigned to this project
+								</p>
+							</div>
+							<button
+								type="button"
+								onclick={openSpaceSelector}
+								class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+								</svg>
+								Manage Spaces
+							</button>
+						</div>
+
+						{#if (project.spaceIds || []).length === 0}
+							<div class="p-8 text-center">
+								<svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H12L10 5H5C3.89543 5 3 5.89543 3 7Z" />
+								</svg>
+								<p class="mt-3 text-sm text-gray-500 dark:text-gray-400">No spaces assigned yet</p>
+								<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+									Assign spaces before adding resources
+								</p>
+								<button
+									type="button"
+									onclick={openSpaceSelector}
+									class="mt-3 text-sm text-green-600 dark:text-green-400 hover:text-green-700"
+								>
+									Assign spaces to this project
+								</button>
+							</div>
+						{:else}
+							<div class="p-4 flex flex-wrap gap-2">
+								{#each (project.spaceIds || []) as spaceId}
+									{@const space = availableSpaces.find(s => s.id === spaceId)}
+									<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+										<svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+											<path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H12L10 5H5C3.89543 5 3 5.89543 3 7Z" />
+										</svg>
+										<span class="text-sm font-medium text-amber-800 dark:text-amber-300">
+											{space?.name || spaceId}
+										</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+
 					<!-- Resources Section -->
 					<div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
 						<div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -396,7 +487,8 @@
 							<button
 								type="button"
 								onclick={openResourceSelector}
-								class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg"
+								disabled={(project.spaceIds || []).length === 0}
+								class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -405,7 +497,17 @@
 							</button>
 						</div>
 
-						{#if project.resources.length === 0}
+						{#if (project.spaceIds || []).length === 0}
+							<div class="p-8 text-center">
+								<svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+								</svg>
+								<p class="mt-3 text-sm text-gray-500 dark:text-gray-400">Assign spaces first</p>
+								<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+									You need to assign spaces before you can add resources
+								</p>
+							</div>
+						{:else if project.resources.length === 0}
 							<div class="p-8 text-center">
 								<svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -416,7 +518,7 @@
 									onclick={openResourceSelector}
 									class="mt-3 text-sm text-green-600 dark:text-green-400 hover:text-green-700"
 								>
-									Add resources to this project
+									Add resources from your spaces
 								</button>
 							</div>
 						{:else}
@@ -523,78 +625,125 @@
 	</div>
 </div>
 
-<!-- Resource Selector Modal -->
-{#if showResourceSelector}
+<!-- Space Selector Modal -->
+{#if showSpaceSelector && project}
 	<div class="fixed inset-0 z-50 overflow-y-auto">
 		<div class="flex min-h-full items-center justify-center p-4">
-			<div class="fixed inset-0 bg-black/50" onclick={() => showResourceSelector = false}></div>
+			<div class="fixed inset-0 bg-black/50 z-40" onclick={() => showSpaceSelector = false}></div>
 			
-			<div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+			<div class="relative z-50 bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
 				<div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-					<h2 class="text-xl font-semibold text-gray-900 dark:text-white">Select Resources</h2>
+					<h2 class="text-xl font-semibold text-gray-900 dark:text-white">Select Spaces</h2>
 					<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-						Choose the resources to include in this project
+						Choose spaces that will be part of this project. Only resources from these spaces can be added.
 					</p>
 				</div>
 				
 				<div class="flex-1 overflow-y-auto p-6">
-					{#if isLoadingResources}
+					{#if isLoadingSpaces}
 						<div class="flex items-center justify-center h-48">
 							<div class="text-center">
 								<div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-3"></div>
-								<p class="text-sm text-gray-500">Loading resources...</p>
+								<p class="text-sm text-gray-500">Loading spaces...</p>
 							</div>
 						</div>
-					{:else if availableResources.length === 0}
+					{:else if availableSpaces.length === 0}
 						<div class="text-center py-12 text-gray-500 dark:text-gray-400">
-							No resources available
+							No spaces available
 						</div>
 					{:else}
-						<div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
-							{selectedResourceIds.size} selected
+						<div class="mb-4">
+							<div class="text-sm text-gray-600 dark:text-gray-400">
+								{selectedSpaceIds.length} spaces selected
+							</div>
 						</div>
-						<div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-							{#each availableResources as resource}
-								<div
-									class="p-4 rounded-lg border-2 cursor-pointer transition-all
-										{selectedResourceIds.has(resource.resourceId) 
-											? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
-											: 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}"
-									onclick={() => toggleResourceSelection(resource.resourceId)}
-									role="checkbox"
-									aria-checked={selectedResourceIds.has(resource.resourceId)}
-									tabindex="0"
-									onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleResourceSelection(resource.resourceId)}
-								>
-									<div class="flex items-start gap-3">
-										<div class="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5
-											{selectedResourceIds.has(resource.resourceId) 
-												? 'bg-green-500 border-green-500' 
-												: 'border-gray-300 dark:border-gray-600'}">
-											{#if selectedResourceIds.has(resource.resourceId)}
-												<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-													<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-												</svg>
-											{/if}
-										</div>
-										<div class="flex-1 min-w-0">
-											<div class="text-sm font-medium text-gray-900 dark:text-white truncate">
-												{resource.name}
-											</div>
-											<div class="text-xs text-gray-500 dark:text-gray-400">
-												{getResourceTypeInfo(resource.resourceType?.split('[')[0] || 'app').label}
-											</div>
-											{#if resource.spaceId}
-												<div class="text-xs text-gray-400 dark:text-gray-500 truncate">
-													{getSpaceName(resource.spaceId)}
-												</div>
-											{/if}
-										</div>
+						<div class="space-y-2">
+							{#each availableSpaces as space}
+								{@const isSelected = selectedSpaceIds.includes(space.id)}
+								<label class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+									{isSelected 
+										? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+										: 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}">
+									<input
+										type="checkbox"
+										class="sr-only"
+										checked={isSelected}
+										onchange={() => toggleSpaceSelection(space.id)}
+									/>
+									<div class="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0
+										{isSelected 
+											? 'bg-green-500 border-green-500' 
+											: 'border-gray-300 dark:border-gray-600'}">
+										{#if isSelected}
+											<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+												<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+											</svg>
+										{/if}
 									</div>
-								</div>
+									<svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+										<path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H12L10 5H5C3.89543 5 3 5.89543 3 7Z" />
+									</svg>
+									<div class="flex-1 min-w-0">
+										<div class="font-medium text-gray-900 dark:text-white">
+											{space.name}
+										</div>
+										{#if space.type}
+											<div class="text-xs text-gray-500 dark:text-gray-400">
+												{space.type}
+											</div>
+										{/if}
+									</div>
+								</label>
 							{/each}
 						</div>
 					{/if}
+				</div>
+				
+				<div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+					<button
+						type="button"
+						onclick={() => showSpaceSelector = false}
+						class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900"
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						onclick={saveSpaceSelection}
+						class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg"
+					>
+						Save Selection ({selectedSpaceIds.length} spaces)
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Resource Selector Modal -->
+{#if showResourceSelector && project}
+	<div class="fixed inset-0 z-50 overflow-y-auto">
+		<div class="flex min-h-full items-center justify-center p-4">
+			<div class="fixed inset-0 bg-black/50 z-40" onclick={() => showResourceSelector = false}></div>
+			
+			<div class="relative z-50 bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-5xl w-full max-h-[85vh] flex flex-col">
+				<div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+					<h2 class="text-xl font-semibold text-gray-900 dark:text-white">Select Resources</h2>
+					<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+						Select resources from your project's spaces to include in this project
+					</p>
+				</div>
+				
+				<div class="flex-1 overflow-hidden">
+					<ResourceCatalog
+						bind:this={resourceCatalogRef}
+						selectable={true}
+						directoryMode={true}
+						selectedIds={selectedResourceIds}
+						onSelectionChange={handleResourceSelectionChange}
+						filterSpaceIds={project.spaceIds || []}
+						compactMode={true}
+					/>
 				</div>
 				
 				<div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
@@ -610,7 +759,7 @@
 						onclick={saveResourceSelection}
 						class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg"
 					>
-						Save Selection
+						Save Selection ({selectedResourceIds.length} resources)
 					</button>
 				</div>
 			</div>
@@ -622,9 +771,9 @@
 {#if showCommitForm && project}
 	<div class="fixed inset-0 z-50 overflow-y-auto">
 		<div class="flex min-h-full items-center justify-center p-4">
-			<div class="fixed inset-0 bg-black/50" onclick={() => showCommitForm = false}></div>
+			<div class="fixed inset-0 bg-black/50 z-40" onclick={() => showCommitForm = false}></div>
 			
-			<div class="relative max-w-2xl w-full">
+			<div class="relative z-50 max-w-2xl w-full">
 				<CommitForm
 					resources={project.resources}
 					projectName={project.name}
@@ -638,21 +787,23 @@
 
 <!-- Promotion Modal -->
 {#if showPromotionModal && promotingCommit && workflow}
-	{@const currentStage = workflow.stages.find(s => s.environmentId === promotingCommit.currentEnvironmentId)}
+	{@const commit = promotingCommit}
+	{@const currentStage = workflow.stages.find(s => s.environmentId === commit.currentEnvironmentId)}
 	{@const nextStage = workflow.stages.find(s => s.order === (currentStage?.order ?? -1) + 1)}
 	{@const nextEnv = environments.find(e => e.id === nextStage?.environmentId)}
+	{@const currentEnv = environments.find(e => e.id === commit.currentEnvironmentId)}
 	
 	<div class="fixed inset-0 z-50 overflow-y-auto">
 		<div class="flex min-h-full items-center justify-center p-4">
-			<div class="fixed inset-0 bg-black/50" onclick={() => showPromotionModal = false}></div>
+			<div class="fixed inset-0 bg-black/50 z-40" onclick={() => showPromotionModal = false}></div>
 			
-			<div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
+			<div class="relative z-50 bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full p-6">
 				<h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Promote Commit</h2>
 				
 				<div class="mb-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
 					<div class="flex items-center gap-2 text-sm">
-						<span class="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{promotingCommit.hash}</span>
-						<span class="text-gray-700 dark:text-gray-300">{promotingCommit.summary}</span>
+						<span class="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">{commit.hash}</span>
+						<span class="text-gray-700 dark:text-gray-300">{commit.summary}</span>
 					</div>
 				</div>
 				
@@ -660,10 +811,10 @@
 					<div class="text-center">
 						<div 
 							class="w-4 h-4 rounded-full mx-auto mb-1"
-							style="background-color: {environments.find(e => e.id === promotingCommit.currentEnvironmentId)?.color || '#6b7280'}"
+							style="background-color: {currentEnv?.color || '#6b7280'}"
 						></div>
 						<span class="text-sm text-gray-600 dark:text-gray-400">
-							{environments.find(e => e.id === promotingCommit.currentEnvironmentId)?.name}
+							{currentEnv?.name}
 						</span>
 					</div>
 					<svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
