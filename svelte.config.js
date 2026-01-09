@@ -20,7 +20,7 @@ const config = {
 			strict: true
 		}),
 		paths: {
-			base: isDevServer ? '' : '/analytics-notebook-svelte', // Use base path for production builds (GitHub Pages)
+			base: isDevServer ? '' : '/qcs-environments-poc', // Use base path for production builds (GitHub Pages)
 		}
 	}
 };
