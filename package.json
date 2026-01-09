@@ -42,7 +42,7 @@
 		"typescript": "^5.9.3",
 		"vite": "^7.2.7",
 		"vite-plugin-devtools-json": "^1.0.0",
-		"vitest": "^2.1.4"
+		"vitest": "^4.0.16"
 	},
 	"dependencies": {
 		"build": "^0.1.4",
