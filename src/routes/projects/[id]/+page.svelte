@@ -51,6 +51,49 @@
 	let availableSpaces = $state<{ id: string; name: string; type?: string }[]>([]);
 	let selectedSpaceIds = $state<string[]>([]);
 	let isLoadingSpaces = $state(false);
+	
+	// Filtered spaces that belong to workflow environments
+	interface SpaceWithEnvironment {
+		id: string;
+		name: string;
+		type?: string;
+		environmentId: string;
+		environmentName: string;
+		environmentColor: string;
+		environmentPurpose: string;
+	}
+	
+	const filteredSpacesWithEnv = $derived.by((): SpaceWithEnvironment[] => {
+		if (!workflow || environments.length === 0 || availableSpaces.length === 0) return [];
+		
+		const result: SpaceWithEnvironment[] = [];
+		
+		// Get environments in workflow order
+		const workflowEnvIds = workflow.stages.map(s => s.environmentId);
+		const orderedEnvs = workflowEnvIds
+			.map(id => environments.find(e => e.id === id))
+			.filter((e): e is Environment => e !== undefined);
+		
+		// For each environment in the workflow, find its spaces
+		for (const env of orderedEnvs) {
+			for (const spaceId of env.spaceIds) {
+				const qlikSpace = availableSpaces.find(s => s.id === spaceId);
+				if (qlikSpace) {
+					result.push({
+						id: qlikSpace.id,
+						name: qlikSpace.name,
+						type: qlikSpace.type,
+						environmentId: env.id,
+						environmentName: env.name,
+						environmentColor: env.color,
+						environmentPurpose: env.purpose
+					});
+				}
+			}
+		}
+		
+		return result;
+	});
 
 	// Resource selection
 	let showResourceSelector = $state(false);
@@ -412,7 +455,12 @@
 				{#if workflow}
 					<div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
 						<h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Workflow: {workflow.name}</h3>
-						<WorkflowVisualization {workflow} {environments} compact />
+						<WorkflowVisualization 
+							{workflow} 
+							{environments} 
+							compact 
+							onStageClick={(envId) => goto(`${base}/environments/${envId}`)}
+						/>
 					</div>
 				{/if}
 			</div>
@@ -635,7 +683,7 @@
 				<div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
 					<h2 class="text-xl font-semibold text-gray-900 dark:text-white">Select Spaces</h2>
 					<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-						Choose spaces that will be part of this project. Only resources from these spaces can be added.
+						Choose spaces from the workflow's environments. Only resources from these spaces can be added to the project.
 					</p>
 				</div>
 				
@@ -647,18 +695,22 @@
 								<p class="text-sm text-gray-500">Loading spaces...</p>
 							</div>
 						</div>
-					{:else if availableSpaces.length === 0}
+					{:else if filteredSpacesWithEnv.length === 0}
 						<div class="text-center py-12 text-gray-500 dark:text-gray-400">
-							No spaces available
+							<svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" fill="currentColor" viewBox="0 0 24 24">
+								<path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H12L10 5H5C3.89543 5 3 5.89543 3 7Z" />
+							</svg>
+							<p>No spaces available in workflow environments</p>
+							<p class="text-xs mt-2">Assign spaces to the environments in this project's workflow first</p>
 						</div>
 					{:else}
 						<div class="mb-4">
 							<div class="text-sm text-gray-600 dark:text-gray-400">
-								{selectedSpaceIds.length} spaces selected
+								{selectedSpaceIds.length} of {filteredSpacesWithEnv.length} spaces selected
 							</div>
 						</div>
 						<div class="space-y-2">
-							{#each availableSpaces as space}
+							{#each filteredSpacesWithEnv as space}
 								{@const isSelected = selectedSpaceIds.includes(space.id)}
 								<label class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
 									{isSelected 
@@ -692,6 +744,13 @@
 												{space.type}
 											</div>
 										{/if}
+									</div>
+									<!-- Environment badge -->
+									<div class="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium"
+										style="background-color: {space.environmentColor}20; color: {space.environmentColor}">
+										<span class="w-2 h-2 rounded-full" style="background-color: {space.environmentColor}"></span>
+										{space.environmentName}
+										<span class="opacity-70">({space.environmentPurpose})</span>
 									</div>
 								</label>
 							{/each}

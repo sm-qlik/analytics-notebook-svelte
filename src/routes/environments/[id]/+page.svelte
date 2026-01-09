@@ -32,10 +32,23 @@
 	}
 
 	let environment = $state<Environment | null>(null);
+	let allEnvironments = $state<Environment[]>([]);
 	let workflows = $state<any[]>([]);
 	let spaces = $state<{ id: string; name: string }[]>([]);
 	let isLoading = $state(true);
 	let isSaving = $state(false);
+	
+	// Map of spaceId -> environment that owns it (excluding current environment)
+	const spacesAssignedToOtherEnvs = $derived.by(() => {
+		const map = new Map<string, { envId: string; envName: string; envColor: string }>();
+		for (const env of allEnvironments) {
+			if (env.id === environment?.id) continue; // Skip current environment
+			for (const spaceId of env.spaceIds) {
+				map.set(spaceId, { envId: env.id, envName: env.name, envColor: env.color });
+			}
+		}
+		return map;
+	});
 
 	// Variable editing
 	let showAddVariable = $state(false);
@@ -179,6 +192,7 @@
 
 	onMount(() => {
 		const unsubEnv = environmentsStore.subscribe(envs => {
+			allEnvironments = envs;
 			environment = envs.find(e => e.id === envId) || null;
 			if (environment) {
 				selectedSpaceIds = new Set(environment.spaceIds);
@@ -467,19 +481,32 @@
 					Select the spaces that should be part of this environment
 				</p>
 				
-				<div class="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700">
+				<div class="max-h-80 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700">
 					{#each spaces as space}
-						<label class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
+						{@const assignedTo = spacesAssignedToOtherEnvs.get(space.id)}
+						{@const isDisabled = !!assignedTo}
+						<label class="flex items-center gap-3 px-4 py-3 
+							{isDisabled 
+								? 'bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed opacity-60' 
+								: 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'}">
 							<input
 								type="checkbox"
 								checked={selectedSpaceIds.has(space.id)}
-								onchange={() => toggleSpaceSelection(space.id)}
-								class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+								onchange={() => !isDisabled && toggleSpaceSelection(space.id)}
+								disabled={isDisabled}
+								class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 disabled:opacity-50"
 							/>
 							<div class="flex-1 min-w-0">
 								<div class="font-medium text-gray-900 dark:text-white">{space.name}</div>
 								<div class="text-xs text-gray-500 dark:text-gray-400 font-mono">{space.id}</div>
 							</div>
+							{#if assignedTo}
+								<div class="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium"
+									style="background-color: {assignedTo.envColor}20; color: {assignedTo.envColor}">
+									<span class="w-2 h-2 rounded-full" style="background-color: {assignedTo.envColor}"></span>
+									{assignedTo.envName}
+								</div>
+							{/if}
 						</label>
 					{/each}
 					{#if spaces.length === 0}
@@ -488,6 +515,15 @@
 						</div>
 					{/if}
 				</div>
+				
+				{#if spacesAssignedToOtherEnvs.size > 0}
+					<p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+						<svg class="inline w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						Spaces already assigned to another environment cannot be selected
+					</p>
+				{/if}
 				
 				<div class="mt-4 flex justify-end gap-3">
 					<button
