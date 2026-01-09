@@ -9,6 +9,10 @@ import { generateId } from '$lib/types';
 const STORAGE_KEY = 'qcs-env-environments';
 
 // Mock data for demonstration
+// Note: BUTTON_AUTOMATION uses project asset IDs - our internal identifiers that persist
+// across environment promotions. These are separate from Qlik's resource IDs which change
+// each time a resource is promoted to a new space. The project asset ID is resolved to
+// the actual Qlik resource ID for the target environment at runtime.
 const MOCK_ENVIRONMENTS: Environment[] = [
 	{
 		id: 'env-dev',
@@ -17,9 +21,9 @@ const MOCK_ENVIRONMENTS: Environment[] = [
 		purpose: 'authoring',
 		color: '#3b82f6', // Blue
 		variables: [
-			{ key: 'API_ENDPOINT', value: 'https://dev-api.example.com', isSecret: false, description: 'API endpoint URL' },
-			{ key: 'DEBUG_MODE', value: 'true', isSecret: false, description: 'Enable debug logging' },
-			{ key: 'DB_CONNECTION', value: '********', isSecret: true, description: 'Database connection string' }
+			{ key: 'COLLATION_NAME', value: 'Development', isSecret: false, description: 'Environment name for collation' },
+			{ key: 'DEBUG_MODE', value: 'true', isSecret: false, description: 'Enable debug logging in lower environments' },
+			{ key: 'BUTTON_AUTOMATION', value: '${asset:refresh-data-automation}', isSecret: false, description: 'Project asset ID for button automation - resolved to Qlik resource ID at runtime' }
 		],
 		spaceIds: [], // Will be populated when spaces are assigned
 		createdAt: '2024-01-15T10:00:00Z',
@@ -32,9 +36,9 @@ const MOCK_ENVIRONMENTS: Environment[] = [
 		purpose: 'production', // Production type - no authoring happens here
 		color: '#f59e0b', // Amber
 		variables: [
-			{ key: 'API_ENDPOINT', value: 'https://stage-api.example.com', isSecret: false, description: 'API endpoint URL' },
-			{ key: 'DEBUG_MODE', value: 'false', isSecret: false, description: 'Enable debug logging' },
-			{ key: 'DB_CONNECTION', value: '********', isSecret: true, description: 'Database connection string' }
+			{ key: 'COLLATION_NAME', value: 'Staging', isSecret: false, description: 'Environment name for collation' },
+			{ key: 'DEBUG_MODE', value: 'false', isSecret: false, description: 'Debug logging disabled in higher environments' },
+			{ key: 'BUTTON_AUTOMATION', value: '${asset:refresh-data-automation}', isSecret: false, description: 'Project asset ID for button automation - resolved to Qlik resource ID at runtime' }
 		],
 		spaceIds: [],
 		createdAt: '2024-01-15T10:00:00Z',
@@ -47,9 +51,9 @@ const MOCK_ENVIRONMENTS: Environment[] = [
 		purpose: 'production',
 		color: '#22c55e', // Green
 		variables: [
-			{ key: 'API_ENDPOINT', value: 'https://api.example.com', isSecret: false, description: 'API endpoint URL' },
-			{ key: 'DEBUG_MODE', value: 'false', isSecret: false, description: 'Enable debug logging' },
-			{ key: 'DB_CONNECTION', value: '********', isSecret: true, description: 'Database connection string' }
+			{ key: 'COLLATION_NAME', value: 'Production', isSecret: false, description: 'Environment name for collation' },
+			{ key: 'DEBUG_MODE', value: 'false', isSecret: false, description: 'Debug logging disabled in production' },
+			{ key: 'BUTTON_AUTOMATION', value: '${asset:refresh-data-automation}', isSecret: false, description: 'Project asset ID for button automation - resolved to Qlik resource ID at runtime' }
 		],
 		spaceIds: [],
 		createdAt: '2024-01-15T10:00:00Z',
