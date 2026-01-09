@@ -8,7 +8,7 @@
 		let oauthHost = 'oauth.eu.qlikcloud.com'; // default
 		
 		if (typeof window !== 'undefined') {
-			const storedTenantUrl = localStorage.getItem('currentTenantUrl');
+			const storedTenantUrl = localStorage.getItem('qcs-env-tenant-url');
 			if (storedTenantUrl) {
 				// Extract region from tenant URL
 				if (storedTenantUrl.includes('.us.qlikcloud.com') || storedTenantUrl.includes('.us.qlik-stage.com')) {

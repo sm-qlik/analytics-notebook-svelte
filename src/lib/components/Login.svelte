@@ -20,7 +20,7 @@
 		// Load tenant history from localStorage
 		if (typeof window !== 'undefined') {
 			try {
-				const stored = localStorage.getItem('qlik-tenant-history');
+				const stored = localStorage.getItem('qcs-env-tenant-history');
 				if (stored) {
 					tenantHistory = JSON.parse(stored);
 				}
@@ -62,7 +62,7 @@
 			
 			// Store tenant URL
 			if (typeof window !== 'undefined') {
-				localStorage.setItem('currentTenantUrl', tenantInfo.tenantUrl);
+				localStorage.setItem('qcs-env-tenant-url', tenantInfo.tenantUrl);
 				
 				// Add to history (max 5)
 				const updatedHistory = [
@@ -70,7 +70,7 @@
 					...tenantHistory.filter(t => t !== tenantInfo.tenantUrl)
 				].slice(0, 5);
 				tenantHistory = updatedHistory;
-				localStorage.setItem('qlik-tenant-history', JSON.stringify(updatedHistory));
+				localStorage.setItem('qcs-env-tenant-history', JSON.stringify(updatedHistory));
 			}
 			
 		// Configure auth once (prevents multiple setDefaultHostConfig calls)
@@ -190,7 +190,7 @@
 	<div class="max-w-md w-full space-y-8">
 		<div class="text-center">
 			<h2 class="mt-6 text-3xl font-extrabold text-gray-900 dark:text-white">
-				Sign in to Qlik Cloud
+				QCS Environments
 			</h2>
 			<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
 				Enter your Qlik Cloud tenant URL to get started
@@ -242,7 +242,7 @@
 					type="button"
 					onclick={handleLogin}
 					disabled={isLoading || !tenantUrl.trim()}
-					class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+					class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					{#if isLoading}
 						<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

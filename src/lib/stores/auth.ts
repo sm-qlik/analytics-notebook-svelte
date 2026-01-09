@@ -12,7 +12,7 @@ export interface AuthState {
 	items: any[] | null;
 }
 
-const STORAGE_KEY = 'qlik-auth-state';
+const STORAGE_KEY = 'qcs-env-auth-state';
 
 function createAuthStore() {
 	const defaultState: AuthState = {
@@ -48,7 +48,7 @@ function createAuthStore() {
 		set,
 		update,
 		// Helper methods
-		setAuthenticated: (tenantUrl: string, tenantName: string | null = null, user: any = null, items: any[] = null) => {
+		setAuthenticated: (tenantUrl: string, tenantName: string | null = null, user: any = null, items: any[] = []) => {
 			const newState: AuthState = {
 				isAuthenticated: true,
 				tenantUrl,
@@ -72,8 +72,8 @@ function createAuthStore() {
 				try {
 					localStorage.removeItem(STORAGE_KEY);
 					// Also clear any Qlik API tokens
-					localStorage.removeItem('qlik-access-token');
-					sessionStorage.removeItem('qlik-access-token');
+					localStorage.removeItem('qcs-env-access-token');
+					sessionStorage.removeItem('qcs-env-access-token');
 					// Reset auth configuration to allow reconfiguration on next login
 					import('$lib/utils/qlik-auth').then(({ resetAuthConfiguration }) => {
 						resetAuthConfiguration();
